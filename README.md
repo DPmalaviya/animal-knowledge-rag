@@ -4,13 +4,22 @@ A portfolio/demo application designed to answer animal-related questions using p
 
 ## Current Status
 
-| Stage | Status | Notes |
-|-------|--------|-------|
-| Stage 1 — Project Design | ✅ CEO Approved | System architecture & roadmap defined |
-| Stage 2 — GitHub Setup | ✅ Completed | Repository structure & baseline workflow |
-| Stage 3 — Demo Dataset | ✅ CEO Approved | 9 PDFs / 85 physical pages with manifest metadata |
-| Stage 4 — Document Ingestion | 🟡 Ready for CEO Review | Page-level raw text extraction & manifest validation |
-| Stage 5+ — Cleaning, Vector Store, Answering, UI | 🔲 Planned / Not Started | Future implementation stages |
+| # | Stage | Status | Notes |
+|---|-------|--------|-------|
+| 1 | Project Design | ✅ CEO Approved | System architecture & roadmap defined |
+| 2 | GitHub Setup | ✅ CEO Approved | Repository foundation & baseline workflow |
+| 3 | Demo Dataset | ✅ CEO Approved | 9 PDFs / 85 physical pages with manifest metadata |
+| 4 | Document Ingestion | 🟡 Awaiting CEO Review | Page-level raw text extraction & manifest validation |
+| 5 | Text Processing & Chunking | 🔲 Planned | Text normalization & page/paragraph-aware chunking |
+| 6 | Embeddings | 🔲 Planned | Gemini Embedding 2 (768-dimensional output) |
+| 7 | Vector Storage | 🔲 Planned | FAISS vector index management |
+| 8 | Retrieval System | 🔲 Planned | Top-K context retrieval (initially K=4) |
+| 9 | RAG Generation | 🔲 Planned | Gemini answer generation with context |
+| 10 | Citations & Grounding | 🔲 Planned | Source/page citation resolution |
+| 11 | Web Application | 🔲 Planned | Streamlit web interface |
+| 12 | Deployment | 🔲 Planned | Streamlit Community Cloud deployment |
+| 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
+| 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
 > **Note:** Document ingestion and automated testing for Stage 4 are fully implemented. End-to-end vector retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
 
@@ -64,7 +73,7 @@ Run full-corpus ingestion via the module entrypoint:
 ```bash
 python -m src.ingestion
 ```
-*Output Summary:* Successfully ingests 9 documents yielding 85 page records across 321,280 total extracted characters.
+*Output Summary:* Successfully ingests 9 documents yielding 85 page records across **500,649** total extracted characters (the exact sum of `len(record["text"])` across all 85 raw page records produced by the current ingestion configuration, not a token count).
 
 ### 3. Run Automated Tests
 Execute the focused `unittest` test suite:
@@ -78,10 +87,13 @@ python -m unittest discover tests
 ```
 Text-based PDFs (data/raw/)
   → Stage 4: Page-Level Raw Text Extraction (PyMuPDF)
-  → Stage 5: Light Normalization & Page/Paragraph-Aware Chunking (Planned)
-  → Stage 6: Embeddings & Vector Indexing (Gemini Embedding 2 / FAISS) (Planned)
-  → Stage 7: Retrieval & Gemini Answering (Planned)
-  → Stage 8: Streamlit Web Interface & Citations (Planned)
+  → Stage 5: Text Processing & Chunking (Planned)
+  → Stage 6: Embeddings (Planned)
+  → Stage 7: Vector Storage (Planned)
+  → Stage 8: Retrieval System (Planned)
+  → Stage 9: RAG Generation (Planned)
+  → Stage 10: Citations & Grounding (Planned)
+  → Stage 11: Web Application (Planned)
 ```
 
 ## Project Structure
@@ -95,13 +107,13 @@ animal-knowledge-rag/
 ├── README.md               # Root documentation
 ├── src/
 │   ├── ingestion.py        # Stage 4: Manifest validation & PDF text extraction
-│   ├── processing.py       # Text normalization (planned)
-│   ├── chunking.py         # Page/paragraph-aware chunking (planned)
-│   ├── embeddings.py       # Gemini embedding generation (planned)
-│   ├── vector_store.py     # FAISS index management (planned)
-│   ├── retrieval.py        # Top-K document retrieval (planned)
-│   ├── generation.py       # Gemini answer generation (planned)
-│   └── citations.py        # Source/page citation resolution (planned)
+│   ├── processing.py       # Stage 5: Text processing & chunking (planned)
+│   ├── chunking.py         # Stage 5: Page/paragraph-aware chunking (planned)
+│   ├── embeddings.py       # Stage 6: Gemini embedding generation (planned)
+│   ├── vector_store.py     # Stage 7: FAISS index management (planned)
+│   ├── retrieval.py        # Stage 8: Top-K document retrieval (planned)
+│   ├── generation.py       # Stage 9: Gemini answer generation (planned)
+│   └── citations.py        # Stage 10: Source/page citation resolution (planned)
 ├── data/
 │   ├── dataset_manifest.csv # Approved dataset manifest (9 PDFs / 85 pages)
 │   ├── README.md           # Dataset licensing, attribution, and provenance documentation
