@@ -1,0 +1,2 @@
+# Dependencies will be added and versioned during their implementation stages.
+# Approved stack: PyMuPDF, Google Gen AI SDK, FAISS, Streamlit.
