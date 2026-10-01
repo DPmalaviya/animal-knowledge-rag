@@ -6,10 +6,11 @@ import math
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List
-
+from typing import Any, Dict, List, Optional, Tuple
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_WHITESPACE_RE = re.compile(r"\s+")
 _STOP_WORDS = frozenset(
     {
         "a",
@@ -85,6 +86,111 @@ def tokenize_meaningful(text: str) -> List[str]:
         for token in _TOKEN_RE.findall(text.lower())
         if token not in _STOP_WORDS and (len(token) >= 3 or token.isdigit())
     ]
+
+
+def split_sentences(text: str) -> List[str]:
+    """Split text after sentence punctuation while preserving source wording."""
+    if not isinstance(text, str):
+        raise ValueError("Text to split must be a string.")
+    return [part.strip() for part in _SENTENCE_SPLIT_RE.split(text) if part.strip()]
+
+
+def _sentence_dedup_key(sentence: str) -> str:
+    return _WHITESPACE_RE.sub(" ", sentence).lower()
+
+
+def build_offline_fallback_result(question: str) -> Dict[str, Any]:
+    """Return the final citation-stage shape for unsupported offline questions."""
+    from src.generation import DEFAULT_GENERATION_MODEL, INSUFFICIENT_CONTEXT_FALLBACK
+
+    _validate_question(question)
+    return {
+        "question": question,
+        "raw_answer": INSUFFICIENT_CONTEXT_FALLBACK,
+        "rendered_answer": INSUFFICIENT_CONTEXT_FALLBACK,
+        "generation_model": DEFAULT_GENERATION_MODEL,
+        "citation_ids": [],
+        "citations": [],
+        "citation_group_count": 0,
+        "unique_citation_count": 0,
+        "is_fallback": True,
+        "answer_mode": "offline_extractive",
+    }
+
+
+def build_extractive_rag_result(
+    question: str, retrieval_records: List[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """Build a deterministic Stage 9 result from verbatim supported sentences."""
+    from src.generation import DEFAULT_GENERATION_MODEL, build_source_map
+
+    _validate_question(question)
+    if not isinstance(retrieval_records, list):
+        raise ValueError("Retrieval records must be a list.")
+    if not retrieval_records:
+        return None
+
+    source_map = build_source_map(retrieval_records)
+    query_terms = set(tokenize_meaningful(question))
+    if not query_terms:
+        return None
+
+    candidates: List[Tuple[int, int, int, str, str]] = []
+    for record_index, record in enumerate(retrieval_records):
+        source_id = f"C{record_index + 1}"
+        for sentence_position, sentence in enumerate(split_sentences(record["text"])):
+            counts = Counter(tokenize_meaningful(sentence))
+            score = sum(counts[term] for term in query_terms)
+            if score:
+                candidates.append(
+                    (score, record["rank"], sentence_position, sentence, source_id)
+                )
+
+    candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
+    selected: List[Tuple[str, str]] = []
+    seen = set()
+    selected_character_count = 0
+    for _, _, _, sentence, source_id in candidates:
+        dedup_key = _sentence_dedup_key(sentence)
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        if selected_character_count + len(sentence) > 600:
+            continue
+        selected.append((sentence, source_id))
+        selected_character_count += len(sentence)
+        if len(selected) == 3:
+            break
+
+    if not selected:
+        return None
+
+    answer = "\n".join(
+        f"{sentence} [{source_id}]" for sentence, source_id in selected
+    )
+    return {
+        "question": question,
+        "answer": answer,
+        "generation_model": DEFAULT_GENERATION_MODEL,
+        "source_map": source_map,
+        "retrieved_context_count": len(source_map),
+        "usage_metadata": None,
+        "answer_mode": "offline_extractive",
+    }
+
+
+def resolve_extractive_result(
+    question: str, retrieval_records: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Build and resolve an extractive result, or return the offline fallback."""
+    from src.citations import resolve_rag_citations
+
+    rag_result = build_extractive_rag_result(question, retrieval_records)
+    if rag_result is None:
+        return build_offline_fallback_result(question)
+    resolved = resolve_rag_citations(rag_result)
+    resolved["answer_mode"] = "offline_extractive"
+    return resolved
 
 
 def _validate_question(question: Any) -> str:

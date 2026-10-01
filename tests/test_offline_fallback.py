@@ -8,8 +8,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.generation import build_source_map
-from src.offline_fallback import rank_metadata, retrieve_locally, tokenize_meaningful
+from src.generation import (
+    DEFAULT_GENERATION_MODEL,
+    INSUFFICIENT_CONTEXT_FALLBACK,
+    build_source_map,
+)
+from src.offline_fallback import (
+    build_extractive_rag_result,
+    build_offline_fallback_result,
+    rank_metadata,
+    resolve_extractive_result,
+    retrieve_locally,
+    split_sentences,
+    tokenize_meaningful,
+)
 
 
 def make_record(faiss_id, *, title="Animal research", text="Animal evidence"):
@@ -245,6 +257,133 @@ class TestLocalLexicalRetrieval(unittest.TestCase):
         self.assertIn("bald eagle", results[0]["title"].lower())
         self.assertIn("lead", (results[0]["title"] + results[0]["text"]).lower())
         build_source_map(results)
+
+
+class TestExtractiveAnswer(unittest.TestCase):
+    def ranked_record(self, faiss_id, *, text, rank=1, page_number=1):
+        record = make_record(faiss_id, text=text)
+        record.update(
+            rank=rank,
+            similarity_score=1.0,
+            page_number=page_number,
+        )
+        return record
+
+    def test_sentence_splitting_uses_terminal_punctuation_and_whitespace(self):
+        text = "  First exact sentence!\nSecond one?  Third. Fourth fragment  "
+        self.assertEqual(
+            split_sentences(text),
+            ["First exact sentence!", "Second one?", "Third.", "Fourth fragment"],
+        )
+
+    def test_scores_frequency_then_breaks_ties_by_rank_and_position(self):
+        records = [
+            self.ranked_record(
+                0,
+                rank=1,
+                text="Eagle appears once. Eagle appears again.",
+            ),
+            self.ranked_record(
+                1,
+                rank=2,
+                text="Eagle eagle has greater frequency. Eagle is later.",
+            ),
+        ]
+        result = build_extractive_rag_result("What about eagle?", records)
+        self.assertEqual(
+            result["answer"],
+            "Eagle eagle has greater frequency. [C2]\n"
+            "Eagle appears once. [C1]\n"
+            "Eagle appears again. [C1]",
+        )
+
+    def test_deduplicates_normalized_sentence_text(self):
+        records = [
+            self.ranked_record(0, rank=1, text="Eagles   eat fish."),
+            self.ranked_record(1, rank=2, text="  eagles eat FISH.  Another eagle fact."),
+        ]
+        result = build_extractive_rag_result("eagles fish fact", records)
+        self.assertEqual(result["answer"].count("eat"), 1)
+        self.assertIn("Another eagle fact. [C2]", result["answer"])
+
+    def test_selects_at_most_three_sentences_and_600_source_characters(self):
+        text = " ".join(f"Eagle evidence sentence {i}." for i in range(1, 8))
+        result = build_extractive_rag_result(
+            "eagle evidence", [self.ranked_record(0, text=text)]
+        )
+        self.assertEqual(result["answer"].count("[C1]"), 3)
+        source_text = result["answer"].replace(" [C1]", "").replace("\n", "")
+        self.assertLessEqual(len(source_text), 600)
+
+    def test_skips_over_budget_sentence_without_truncating(self):
+        too_long = "Eagle " + ("x" * 594) + "."
+        fitting = "Eagle fits."
+        result = build_extractive_rag_result(
+            "eagle", [self.ranked_record(0, text=f"{too_long} {fitting}")]
+        )
+        self.assertEqual(result["answer"], "Eagle fits. [C1]")
+        self.assertNotIn("xxx", result["answer"])
+
+    def test_preserves_source_sentence_verbatim_and_assigns_source_ids(self):
+        records = [
+            self.ranked_record(0, rank=1, text="Eagle's wings—broad & strong!"),
+            self.ranked_record(1, rank=2, text="An eagle nests nearby."),
+        ]
+        original = copy.deepcopy(records)
+        result = build_extractive_rag_result("eagle wings nests", records)
+        self.assertEqual(
+            result["answer"],
+            "Eagle's wings—broad & strong! [C1]\nAn eagle nests nearby. [C2]",
+        )
+        self.assertEqual(records, original)
+        self.assertEqual(result["answer_mode"], "offline_extractive")
+        self.assertIsNone(result["usage_metadata"])
+
+    def test_unsupported_builder_and_exact_final_fallback(self):
+        self.assertIsNone(build_extractive_rag_result("eagle", []))
+        unsupported = [self.ranked_record(0, text="Whales migrate.")]
+        self.assertIsNone(build_extractive_rag_result("eagle", unsupported))
+
+        expected = {
+            "question": "eagle",
+            "raw_answer": INSUFFICIENT_CONTEXT_FALLBACK,
+            "rendered_answer": INSUFFICIENT_CONTEXT_FALLBACK,
+            "generation_model": DEFAULT_GENERATION_MODEL,
+            "citation_ids": [],
+            "citations": [],
+            "citation_group_count": 0,
+            "unique_citation_count": 0,
+            "is_fallback": True,
+            "answer_mode": "offline_extractive",
+        }
+        self.assertEqual(build_offline_fallback_result("eagle"), expected)
+        self.assertEqual(resolve_extractive_result("eagle", unsupported), expected)
+
+    def test_supported_result_resolves_citations_and_preserves_mode(self):
+        records = [
+            self.ranked_record(
+                0,
+                text="Bald eagles can ingest lead fragments.",
+                page_number=7,
+            )
+        ]
+        stage9 = build_extractive_rag_result("How do eagles ingest lead?", records)
+        self.assertEqual(stage9["generation_model"], DEFAULT_GENERATION_MODEL)
+        self.assertEqual(stage9["retrieved_context_count"], 1)
+        self.assertEqual(list(stage9["source_map"]), ["C1"])
+
+        final = resolve_extractive_result("How do eagles ingest lead?", records)
+        self.assertEqual(
+            final["raw_answer"], "Bald eagles can ingest lead fragments. [C1]"
+        )
+        self.assertEqual(
+            final["rendered_answer"],
+            "Bald eagles can ingest lead fragments. (document-0.pdf, p. 7)",
+        )
+        self.assertEqual(final["citation_ids"], ["C1"])
+        self.assertEqual(final["citations"][0]["page_number"], 7)
+        self.assertFalse(final["is_fallback"])
+        self.assertEqual(final["answer_mode"], "offline_extractive")
 
 
 if __name__ == "__main__":
