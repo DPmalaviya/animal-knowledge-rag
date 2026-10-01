@@ -13,7 +13,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 5 | Text Processing & Chunking | ✅ CEO Approved | Light text normalization & page-bounded paragraph chunking |
 | 6 | Embeddings | ✅ CEO Approved | 768-dim vector generation via official Google Gen AI SDK (272 chunks embedded) |
 | 7 | Vector Storage | ✅ CEO Approved | FAISS IndexFlatIP 768-dim vector index & metadata mapping |
-| 8 | Retrieval System | 🟡 Needs CEO Review | Semantic Top-K context retrieval (K=4) with bounded retries & compatibility checks |
+| 8 | Retrieval System | ✅ CEO Approved | Semantic Top-K context retrieval (K=4) with bounded retries & compatibility checks |
 | 9 | RAG Generation | 🟡 Needs CEO Review | Grounded answer generation via gemini-3.8-flash & controlled C1..CK source IDs |
 | 10 | Citations & Grounding | 🔲 Planned | Source/page citation resolution |
 | 11 | Web Application | 🔲 Planned | Streamlit web interface |
