@@ -88,12 +88,10 @@ class TestChunking(unittest.TestCase):
 
     def test_07_adjacent_chunks_contain_overlap_and_advance_content(self):
         # Deterministically generate 2 full chunks by exceeding TARGET_TOKENS (450 tok)
-        # Block 1: 440 tokens with distinct trailing sentence
         p1_sentences = [f"DistinctSentenceA{i:02d} provides initial long body content." for i in range(25)]
         s_tail = "ThisIsBoundaryOverlapPassage sentence that bridges chunk one and chunk two."
         p1 = " ".join(p1_sentences) + " " + s_tail  # ~440 tokens
 
-        # Block 2: 440 tokens of distinct new content
         p2_sentences = [f"DistinctSentenceB{i:02d} provides second chunk body content." for i in range(25)]
         p2 = " ".join(p2_sentences)  # ~440 tokens
 
@@ -117,13 +115,12 @@ class TestChunking(unittest.TestCase):
 
         self.assertNotEqual(c1_text, c2_text, "Adjacent chunks must not be identical")
 
-        # Verify boundary overlap
-        self.assertIn(s_tail, c1_text, "Chunk 1 must end with s_tail boundary passage")
-        self.assertIn(s_tail, c2_text, "Chunk 2 must start with s_tail boundary overlap")
+        # Calculate full expected overlap using _compute_overlap_text
+        expected_overlap = _compute_overlap_text(c1_text, OVERLAP_TOKENS)
 
-        # Verify shared overlap stays within OVERLAP_TOKENS budget
-        overlap_tokens = estimate_tokens(s_tail)
-        self.assertLessEqual(overlap_tokens, OVERLAP_TOKENS, "Overlap budget must be respected")
+        self.assertTrue(bool(expected_overlap), "Expected overlap must be nonempty")
+        self.assertTrue(c2_text.startswith(expected_overlap), "Chunk 2 must start with full expected overlap")
+        self.assertLessEqual(estimate_tokens(expected_overlap), OVERLAP_TOKENS, "Overlap token budget must be respected")
 
         # Verify second chunk advances source content
         self.assertIn("DistinctSentenceB00", c2_text, "Chunk 2 must contain new source content")
@@ -156,21 +153,32 @@ class TestChunking(unittest.TestCase):
         self.assertIn("Duplicate chunk_id generated", str(ctx.exception))
 
     def test_10_small_tail_merge_prevents_duplicate_overlap(self):
-        # Construct deterministic fixture: Block 1 (~435 tok) + Block 2 (~30 tok)
-        # Block 1 exceeds TARGET_TOKENS when Block 2 is considered, splitting the page.
-        # Block 2 gets overlap from Block 1 (~16 tok overlap + 30 tok new = 46 tok < SMALL_CHUNK_THRESHOLD 100).
-        # Small-tail merge merges Block 2 into Block 1.
-        b1_sentences = [f"Sentence{i:02d} in block one contains unique detailed body content." for i in range(25)]
+        # Construct deterministic fixture using 27 sentences in block 1:
+        # Block 1 (~440 tok) + Block 2 (~16 tok).
+        # Block 1 alone <= TARGET_TOKENS (450 tok).
+        # Block 1 + Block 2 > TARGET_TOKENS (450 tok), forcing a chunk split.
+        # Overlapped tail is < SMALL_CHUNK_THRESHOLD (100 tok), triggering small-tail merge.
+        b1_sentences = [f"Sentence{i:02d} in block one contains unique detailed body content." for i in range(27)]
         s_tail = "UniqueSentenceTailPassage bridging the small tail merge test."
         b1 = " ".join(b1_sentences) + " " + s_tail
-
         b2 = "SentenceZeroOne in block two represents tiny new ending content."
+
+        b1_plus_b2 = f"{b1}\n\n{b2}"
+        overlap_str = _compute_overlap_text(b1, OVERLAP_TOKENS)
+        overlapped_tail = f"{overlap_str}\n\n{b2}"
+
+        # Explicit precondition assertions
+        self.assertLessEqual(estimate_tokens(b1), TARGET_TOKENS, "Precondition: b1 alone must be <= TARGET_TOKENS")
+        self.assertGreater(estimate_tokens(b1_plus_b2), TARGET_TOKENS, "Precondition: b1 + b2 must exceed TARGET_TOKENS")
+        self.assertTrue(bool(overlap_str), "Precondition: computed overlap must be nonempty")
+        self.assertLess(estimate_tokens(overlapped_tail), SMALL_CHUNK_THRESHOLD, "Precondition: overlapped tail must be < SMALL_CHUNK_THRESHOLD")
+        self.assertLessEqual(estimate_tokens(b1_plus_b2), HARD_MAX_TOKENS, "Precondition: merged source must be <= HARD_MAX_TOKENS")
 
         page = {
             "document_id": "doc_regression_test",
             "filename": "test.pdf",
             "page_number": 1,
-            "text": f"{b1}\n\n{b2}",
+            "text": b1_plus_b2,
             "title": "Title",
             "publisher": "Pub",
             "source_url": "http://example.com",
@@ -178,27 +186,25 @@ class TestChunking(unittest.TestCase):
 
         chunks = chunk_processed_page(page)
 
-        # Verify small-tail merge occurred into 1 chunk
-        self.assertEqual(len(chunks), 1, "Small-tail merge should combine the two blocks into 1 chunk")
+        # Unconditional assertions
+        self.assertEqual(len(chunks), 1, "Exactly one final chunk should remain after small-tail merge")
 
         merged_text = chunks[0]["text"]
 
-        # Verify uniquely identifiable s_tail passage appears EXACTLY ONCE
-        count_tail = merged_text.count(s_tail)
-        self.assertEqual(count_tail, 1, "Boundary overlap passage must appear exactly once in merged chunk")
+        self.assertEqual(merged_text.count(s_tail), 1, "Boundary overlap passage must appear exactly once in merged chunk")
+        self.assertEqual(merged_text.count("SentenceZeroOne"), 1, "Tiny ending content must appear exactly once")
 
-        # Verify tiny new ending remains present exactly once
-        count_ending = merged_text.count("SentenceZeroOne")
-        self.assertEqual(count_ending, 1, "Tiny new ending content must remain present exactly once")
-
-        # Verify source content ordering
+        # Verify content ordering
         pos_b1 = merged_text.find("Sentence00")
         pos_tail = merged_text.find(s_tail)
         pos_b2 = merged_text.find("SentenceZeroOne")
-        self.assertTrue(pos_b1 < pos_tail < pos_b2, "Source content must remain ordered")
+        self.assertTrue(0 <= pos_b1 < pos_tail < pos_b2, "All intended source content must remain in correct order")
 
-        # Verify hard max compliance
-        self.assertLessEqual(chunks[0]["estimated_token_count"], HARD_MAX_TOKENS)
+        # Verify hard maximum compliance
+        self.assertLessEqual(chunks[0]["estimated_token_count"], HARD_MAX_TOKENS, "Merged chunk must respect HARD_MAX_TOKENS")
+
+        # Compare complete output against expected source text with documented separators
+        self.assertEqual(merged_text, b1_plus_b2, "Merged text must match source paragraphs joined by double newline")
 
     def test_11_natural_source_repetition_preserved(self):
         # Verify naturally repeated source text (e.g. echo echo) is NOT stripped
