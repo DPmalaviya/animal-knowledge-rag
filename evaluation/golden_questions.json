@@ -1,0 +1,406 @@
+{
+  "dataset_version": "1.0",
+  "total_questions": 20,
+  "supported_count": 16,
+  "unsupported_count": 4,
+  "created_at": "2026-10-01",
+  "questions": [
+    {
+      "id": "Q01",
+      "type": "supported",
+      "category": "factual",
+      "animal_group": "Birds",
+      "question": "What primary threat historical pesticide caused severe shell thinning in bald eagle eggs?",
+      "topic": "Bald Eagle Pesticide Impacts",
+      "origin": "new",
+      "expected_filenames": ["bald_eagle_factsheet.pdf"],
+      "accepted_pages": [1, 2],
+      "accepted_evidence": [
+        {"filename": "bald_eagle_factsheet.pdf", "page": 1},
+        {"filename": "bald_eagle_factsheet.pdf", "page": 2}
+      ],
+      "reference_points": [
+        "DDT (and its metabolite DDE) caused widespread shell thinning in bald eagle eggs shortly after World War II.",
+        "Eggshells became so thin that they broke during incubation or otherwise failed to hatch, causing population decimation."
+      ],
+      "source_verification_notes": "Verified against bald_eagle_factsheet.pdf pages 1-2."
+    },
+    {
+      "id": "Q02",
+      "type": "supported",
+      "category": "relationship",
+      "animal_group": "Birds",
+      "question": "How does big game hunting with lead rifle ammunition expose bald eagles to elevated lead levels?",
+      "topic": "Bald Eagle Lead Ammunition Exposure",
+      "origin": "reused",
+      "expected_filenames": ["bald_eagle_lead_exposure.pdf"],
+      "accepted_pages": [1, 2, 8],
+      "accepted_evidence": [
+        {"filename": "bald_eagle_lead_exposure.pdf", "page": 1},
+        {"filename": "bald_eagle_lead_exposure.pdf", "page": 2},
+        {"filename": "bald_eagle_lead_exposure.pdf", "page": 8}
+      ],
+      "reference_points": [
+        "Hunters leave behind gut piles (offal) or unrecovered game carcasses containing lead bullet fragments.",
+        "Scavenging bald eagles ingest these lead fragments while feeding on unrecovered carcasses or gut piles."
+      ],
+      "source_verification_notes": "Reused from dev sanity questions. Verified against bald_eagle_lead_exposure.pdf pages 1, 2, and 8."
+    },
+    {
+      "id": "Q03",
+      "type": "supported",
+      "category": "measurement",
+      "animal_group": "Insects",
+      "question": "What physical wing coloration characteristic predicts long-distance flight endurance in monarch butterflies?",
+      "topic": "Monarch Wing Coloration & Flight Endurance",
+      "origin": "new",
+      "expected_filenames": ["monarch_flight_performance.pdf"],
+      "accepted_pages": [1, 2, 3],
+      "accepted_evidence": [
+        {"filename": "monarch_flight_performance.pdf", "page": 1},
+        {"filename": "monarch_flight_performance.pdf", "page": 2},
+        {"filename": "monarch_flight_performance.pdf", "page": 3}
+      ],
+      "reference_points": [
+        "Darker orange (redder) wing hue positively predicts flight distance and flight endurance in autumn migratory monarchs.",
+        "Monarchs with darker orange wings flew longer distances on flight mills compared to butterflies with lighter yellow/orange wings."
+      ],
+      "source_verification_notes": "Verified against monarch_flight_performance.pdf pages 1-3."
+    },
+    {
+      "id": "Q04",
+      "type": "supported",
+      "category": "factual",
+      "animal_group": "Insects",
+      "question": "What plant family is strictly required by monarch butterfly larvae for feeding and development?",
+      "topic": "Monarch Larval Host Plant",
+      "origin": "reused",
+      "expected_filenames": ["monarch_butterfly_factsheet.pdf"],
+      "accepted_pages": [1],
+      "accepted_evidence": [
+        {"filename": "monarch_butterfly_factsheet.pdf", "page": 1}
+      ],
+      "reference_points": [
+        "Monarch caterpillars feed exclusively on milkweed plants (Asclepias species).",
+        "Milkweed contains cardenolides (cardiac glycosides) that monarch larvae sequester for defense."
+      ],
+      "source_verification_notes": "Reused from dev sanity questions. Verified against monarch_butterfly_factsheet.pdf page 1."
+    },
+    {
+      "id": "Q05",
+      "type": "supported",
+      "category": "relationship",
+      "animal_group": "Insects",
+      "question": "What did long-term tagging data reveal regarding the migration mortality hypothesis for monarch butterflies?",
+      "topic": "Monarch Tagging Data & Migration Mortality",
+      "origin": "new",
+      "expected_filenames": ["monarch_migration_mortality.pdf"],
+      "accepted_pages": [1, 2, 12, 13],
+      "accepted_evidence": [
+        {"filename": "monarch_migration_mortality.pdf", "page": 1},
+        {"filename": "monarch_migration_mortality.pdf", "page": 2},
+        {"filename": "monarch_migration_mortality.pdf", "page": 12},
+        {"filename": "monarch_migration_mortality.pdf", "page": 13}
+      ],
+      "reference_points": [
+        "Tagging data analysis showed no significant correlation between migration distance/mortality and late-summer monarch population size.",
+        "The findings did not support the hypothesis that increased autumn migration mortality drives long-term overwintering population declines in Mexico."
+      ],
+      "source_verification_notes": "Verified against monarch_migration_mortality.pdf pages 1, 2, 12, 13."
+    },
+    {
+      "id": "Q06",
+      "type": "supported",
+      "category": "factual",
+      "animal_group": "Marine Mammals",
+      "question": "What unexpected vocal behavior do humpback whales display on Antarctic feeding grounds during late autumn?",
+      "topic": "Humpback Whale Antarctic Song Production",
+      "origin": "reused",
+      "expected_filenames": ["humpback_whale_foraging.pdf"],
+      "accepted_pages": [1, 2, 3],
+      "accepted_evidence": [
+        {"filename": "humpback_whale_foraging.pdf", "page": 1},
+        {"filename": "humpback_whale_foraging.pdf", "page": 2},
+        {"filename": "humpback_whale_foraging.pdf", "page": 3}
+      ],
+      "reference_points": [
+        "Humpback whales produce complex acoustic song on polar feeding grounds during late autumn while simultaneously foraging for krill.",
+        "Song production on high-latitude feeding grounds demonstrates behavioral flexibility as whales transition between feeding and breeding seasons."
+      ],
+      "source_verification_notes": "Reused from dev sanity questions. Verified against humpback_whale_foraging.pdf pages 1-3."
+    },
+    {
+      "id": "Q07",
+      "type": "supported",
+      "category": "ecology",
+      "animal_group": "Reptiles",
+      "question": "What primary foraging habitats and dietary components do juvenile green sea turtles utilize in Texas coastal waters?",
+      "topic": "Green Sea Turtle Foraging Ecology",
+      "origin": "new",
+      "expected_filenames": ["sea_turtle_foraging.pdf"],
+      "accepted_pages": [1, 2, 5, 6],
+      "accepted_evidence": [
+        {"filename": "sea_turtle_foraging.pdf", "page": 1},
+        {"filename": "sea_turtle_foraging.pdf", "page": 2},
+        {"filename": "sea_turtle_foraging.pdf", "page": 5},
+        {"filename": "sea_turtle_foraging.pdf", "page": 6}
+      ],
+      "reference_points": [
+        "Juvenile green turtles in the Northwestern Gulf of Mexico (Texas coast) display omnivorous foraging plasticity, consuming macroalgae, seagrasses, and animal matter.",
+        "Algae and macroalgae (such as red and green algae) form a major component of their inshore jetty and bay diet."
+      ],
+      "source_verification_notes": "Verified against sea_turtle_foraging.pdf pages 1, 2, 5, 6."
+    },
+    {
+      "id": "Q08",
+      "type": "supported",
+      "category": "conservation",
+      "animal_group": "Reptiles",
+      "question": "How effective were trained scent-detection canines in locating sea turtle nests compared to traditional visual monitoring?",
+      "topic": "Canine Scent Detection for Sea Turtle Nests",
+      "origin": "new",
+      "expected_filenames": ["sea_turtle_nest_monitoring.pdf"],
+      "accepted_pages": [1, 2, 8, 9],
+      "accepted_evidence": [
+        {"filename": "sea_turtle_nest_monitoring.pdf", "page": 1},
+        {"filename": "sea_turtle_nest_monitoring.pdf", "page": 2},
+        {"filename": "sea_turtle_nest_monitoring.pdf", "page": 8},
+        {"filename": "sea_turtle_nest_monitoring.pdf", "page": 9}
+      ],
+      "reference_points": [
+        "Trained scent-detection dogs located sea turtle nests (loggerhead, green, leatherback) with high accuracy and significantly reduced search time.",
+        "Canine detection offered a non-invasive monitoring method that minimized beach disturbance and unnecessary excavation holes."
+      ],
+      "source_verification_notes": "Verified against sea_turtle_nest_monitoring.pdf pages 1, 2, 8, 9."
+    },
+    {
+      "id": "Q09",
+      "type": "supported",
+      "category": "measurement",
+      "animal_group": "Terrestrial Mammals",
+      "question": "What physiological marker was monitored to assess stress responses in African elephants during captive-to-wild reintegration?",
+      "topic": "African Elephant Reintegration Stress Physiology",
+      "origin": "reused",
+      "expected_filenames": ["african_elephant_reintegration.pdf"],
+      "accepted_pages": [1, 2, 3],
+      "accepted_evidence": [
+        {"filename": "african_elephant_reintegration.pdf", "page": 1},
+        {"filename": "african_elephant_reintegration.pdf", "page": 2},
+        {"filename": "african_elephant_reintegration.pdf", "page": 3}
+      ],
+      "reference_points": [
+        "Faecal glucocorticoid metabolite (GCM) levels and salivary cortisol/stress markers were tracked during reintegration.",
+        "GCM levels spiked during initial release and environmental disturbance before returning to baseline levels over time."
+      ],
+      "source_verification_notes": "Reused from dev sanity questions. Verified against african_elephant_reintegration.pdf pages 1-3."
+    },
+    {
+      "id": "Q10",
+      "type": "supported",
+      "category": "conservation",
+      "animal_group": "Birds",
+      "question": "What voluntary program was implemented on Arizona's Kaibab Plateau to reduce lead exposure in condors and eagles?",
+      "topic": "Voluntary Non-Lead Ammunition Programs",
+      "origin": "new",
+      "expected_filenames": ["bald_eagle_lead_exposure.pdf"],
+      "accepted_pages": [2, 8, 9],
+      "accepted_evidence": [
+        {"filename": "bald_eagle_lead_exposure.pdf", "page": 2},
+        {"filename": "bald_eagle_lead_exposure.pdf", "page": 8},
+        {"filename": "bald_eagle_lead_exposure.pdf", "page": 9}
+      ],
+      "reference_points": [
+        "A voluntary non-lead ammunition program was established in 2005 on the Kaibab Plateau in Arizona.",
+        "The program encouraged hunters to use copper or non-lead bullets to protect scavenging raptors from lead ingestion."
+      ],
+      "source_verification_notes": "Verified against bald_eagle_lead_exposure.pdf pages 2, 8, 9."
+    },
+    {
+      "id": "Q11",
+      "type": "supported",
+      "category": "factual",
+      "animal_group": "Birds",
+      "question": "Under what federal wildlife protection act continue to protect bald eagles following their Endangered Species Act delisting?",
+      "topic": "Bald Eagle Federal Protection Acts",
+      "origin": "new",
+      "expected_filenames": ["bald_eagle_factsheet.pdf"],
+      "accepted_pages": [1, 2],
+      "accepted_evidence": [
+        {"filename": "bald_eagle_factsheet.pdf", "page": 1},
+        {"filename": "bald_eagle_factsheet.pdf", "page": 2}
+      ],
+      "reference_points": [
+        "Bald eagles remain federally protected under the Bald and Golden Eagle Protection Act and the Migratory Bird Treaty Act.",
+        "Delisting from the Endangered Species Act list occurred after dramatic population recovery."
+      ],
+      "source_verification_notes": "Verified against bald_eagle_factsheet.pdf pages 1-2."
+    },
+    {
+      "id": "Q12",
+      "type": "supported",
+      "category": "measurement",
+      "animal_group": "Insects",
+      "question": "How did researchers measure flight performance in monarch butterflies during experimental wing coloration trials?",
+      "topic": "Flight Mill Endurance Measurement in Monarchs",
+      "origin": "new",
+      "expected_filenames": ["monarch_flight_performance.pdf"],
+      "accepted_pages": [1, 2, 3],
+      "accepted_evidence": [
+        {"filename": "monarch_flight_performance.pdf", "page": 1},
+        {"filename": "monarch_flight_performance.pdf", "page": 2},
+        {"filename": "monarch_flight_performance.pdf", "page": 3}
+      ],
+      "reference_points": [
+        "Researchers tethered monarchs to computerized flight mills to record total flight distance, flight duration, and flight speed.",
+        "Wing color parameters (hue, saturation, brightness) were measured using digital image scanning software."
+      ],
+      "source_verification_notes": "Verified against monarch_flight_performance.pdf pages 1-3."
+    },
+    {
+      "id": "Q13",
+      "type": "supported",
+      "category": "synthesis",
+      "animal_group": "Marine Mammals",
+      "question": "What oceanographic or prey density conditions correlate with acoustic song duration among foraging Antarctic humpback whales?",
+      "topic": "Humpback Whale Song & Krill Density",
+      "origin": "new",
+      "expected_filenames": ["humpback_whale_foraging.pdf"],
+      "accepted_pages": [1, 3, 4, 5],
+      "accepted_evidence": [
+        {"filename": "humpback_whale_foraging.pdf", "page": 1},
+        {"filename": "humpback_whale_foraging.pdf", "page": 3},
+        {"filename": "humpback_whale_foraging.pdf", "page": 4},
+        {"filename": "humpback_whale_foraging.pdf", "page": 5}
+      ],
+      "reference_points": [
+        "Whales engaged in singing behavior between foraging dive bouts, particularly during night hours or lower krill density periods.",
+        "Song behavior occurred in close spatial proximity to active feeding grounds in Antarctic bays."
+      ],
+      "source_verification_notes": "Verified against humpback_whale_foraging.pdf pages 1, 3, 4, 5."
+    },
+    {
+      "id": "Q14",
+      "type": "supported",
+      "category": "conservation",
+      "animal_group": "Reptiles",
+      "question": "What three sea turtle species were monitored by scent-detection dogs during Florida coastal nesting surveys?",
+      "topic": "Canine Detection Sea Turtle Species",
+      "origin": "new",
+      "expected_filenames": ["sea_turtle_nest_monitoring.pdf"],
+      "accepted_pages": [1, 2, 3],
+      "accepted_evidence": [
+        {"filename": "sea_turtle_nest_monitoring.pdf", "page": 1},
+        {"filename": "sea_turtle_nest_monitoring.pdf", "page": 2},
+        {"filename": "sea_turtle_nest_monitoring.pdf", "page": 3}
+      ],
+      "reference_points": [
+        "The scent-detection dog study evaluated nests from Loggerhead (Caretta caretta), Green (Chelonia mydas), and Leatherback (Dermochelys coriacea) sea turtles."
+      ],
+      "source_verification_notes": "Verified against sea_turtle_nest_monitoring.pdf pages 1-3."
+    },
+    {
+      "id": "Q15",
+      "type": "supported",
+      "category": "relationship",
+      "animal_group": "Terrestrial Mammals",
+      "question": "How did captive-reared African elephants adapt their movement patterns and herd interactions following wild release?",
+      "topic": "African Elephant Wild Reintegration Movement",
+      "origin": "new",
+      "expected_filenames": ["african_elephant_reintegration.pdf"],
+      "accepted_pages": [1, 3, 4, 5],
+      "accepted_evidence": [
+        {"filename": "african_elephant_reintegration.pdf", "page": 1},
+        {"filename": "african_elephant_reintegration.pdf", "page": 3},
+        {"filename": "african_elephant_reintegration.pdf", "page": 4},
+        {"filename": "african_elephant_reintegration.pdf", "page": 5}
+      ],
+      "reference_points": [
+        "Reintegrated elephants expanded their home ranges and established spatial social associations with wild elephant groups over time.",
+        "Initial disturbance behaviors decreased as elephants adapted to natural foraging and landscape features."
+      ],
+      "source_verification_notes": "Verified against african_elephant_reintegration.pdf pages 1, 3, 4, 5."
+    },
+    {
+      "id": "Q16",
+      "type": "supported",
+      "category": "synthesis",
+      "animal_group": "Reptiles",
+      "question": "What methods were used to analyze stable isotopes and diet composition in Texas green sea turtles?",
+      "topic": "Stable Isotope Analysis in Green Sea Turtle Diet",
+      "origin": "new",
+      "expected_filenames": ["sea_turtle_foraging.pdf"],
+      "accepted_pages": [1, 2, 3, 4],
+      "accepted_evidence": [
+        {"filename": "sea_turtle_foraging.pdf", "page": 1},
+        {"filename": "sea_turtle_foraging.pdf", "page": 2},
+        {"filename": "sea_turtle_foraging.pdf", "page": 3},
+        {"filename": "sea_turtle_foraging.pdf", "page": 4}
+      ],
+      "reference_points": [
+        "Researchers collected tissue/epidermal samples and digestive lavage contents for carbon (d13C) and nitrogen (d15N) stable isotope analysis.",
+        "Isotopic ratios were compared against local macroalgae and seagrass baselines to infer dietary shifts."
+      ],
+      "source_verification_notes": "Verified against sea_turtle_foraging.pdf pages 1-4."
+    },
+    {
+      "id": "Q17",
+      "type": "unsupported",
+      "category": "unsupported",
+      "animal_group": "Birds",
+      "question": "What is the average flight speed of peregrine falcons during high-altitude hunting dives?",
+      "topic": "Peregrine Falcon Diving Speed (Out of Corpus)",
+      "origin": "new",
+      "expected_filenames": [],
+      "accepted_pages": [],
+      "accepted_evidence": [],
+      "reference_points": [],
+      "expected_behavior": "exact_fallback",
+      "source_verification_notes": "Out-of-corpus species (peregrine falcon). Verified zero mentions in all 9 corpus PDFs."
+    },
+    {
+      "id": "Q18",
+      "type": "unsupported",
+      "category": "unsupported",
+      "animal_group": "Marine Mammals",
+      "question": "What are the primary echolocation frequencies used by harbor porpoises for prey detection?",
+      "topic": "Harbor Porpoise Echolocation (Out of Corpus)",
+      "origin": "new",
+      "expected_filenames": [],
+      "accepted_pages": [],
+      "accepted_evidence": [],
+      "reference_points": [],
+      "expected_behavior": "exact_fallback",
+      "source_verification_notes": "Out-of-corpus species (harbor porpoise). Verified zero mentions in all 9 corpus PDFs."
+    },
+    {
+      "id": "Q19",
+      "type": "unsupported",
+      "category": "unsupported",
+      "animal_group": "Terrestrial Mammals",
+      "question": "What is the gestation period and litter size of wild snow leopards in the Himalayas?",
+      "topic": "Snow Leopard Reproduction (Out of Corpus)",
+      "origin": "new",
+      "expected_filenames": [],
+      "accepted_pages": [],
+      "accepted_evidence": [],
+      "reference_points": [],
+      "expected_behavior": "exact_fallback",
+      "source_verification_notes": "Out-of-corpus species (snow leopard). Verified zero mentions in all 9 corpus PDFs."
+    },
+    {
+      "id": "Q20",
+      "type": "unsupported",
+      "category": "unsupported",
+      "animal_group": "Insects",
+      "question": "How do honeybee waggle dances communicate precise solar azimuth angles inside dark hives?",
+      "topic": "Honeybee Waggle Dance (Out of Corpus)",
+      "origin": "new",
+      "expected_filenames": [],
+      "accepted_pages": [],
+      "accepted_evidence": [],
+      "reference_points": [],
+      "expected_behavior": "exact_fallback",
+      "source_verification_notes": "Out-of-corpus topic (honeybee waggle dance). Verified zero mentions in all 9 corpus PDFs."
+    }
+  ]
+}
