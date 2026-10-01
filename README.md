@@ -164,6 +164,7 @@ Stage 11 implements a clean, native Streamlit web interface (`app.py`) for the A
 Stage 12 packages the application and its verified runtime vector index artifacts for public cloud hosting on **Streamlit Community Cloud**.
 
 ### Deployment Specifications & Runtime Artifact Policy
+- **Public Application URL**: https://animal-knowledge-rag-bpnfy8iqoxqrbcyeasica2.streamlit.app/
 - **Platform**: Streamlit Community Cloud (Python 3.13)
 - **Repository**: `DPmalaviya/animal-knowledge-rag` (Branch: `main`, Entrypoint: `app.py`)
 - **Root Secret Configuration**: `GEMINI_API_KEY` configured securely via platform secret interface (`st.secrets`). No `.env` files or API key input fields exist in code or repository.
@@ -241,7 +242,7 @@ animal-knowledge-rag/
 │   ├── README.md           # Dataset licensing, attribution, and provenance documentation
 │   ├── raw/                # Approved source PDF documents
 │   └── processed/          # Intermediate extracted data (gitignored)
-├── index/                  # FAISS index files (gitignored)
+├── index/                  # Tracked Stage 7 runtime FAISS artifacts for cloud deployment
 ├── evaluation/             # Evaluation datasets (planned)
 └── tests/
     ├── test_ingestion.py   # Stage 4 ingestion test suite
