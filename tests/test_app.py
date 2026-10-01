@@ -168,7 +168,7 @@ class TestAppStage11(unittest.TestCase):
     def test_05_error_mapping_hides_secrets_and_paths(self) -> None:
         exc_secret = ValueError("GEMINI_API_KEY=AIzaSySecretKey is invalid at /home/user/path")
         mapped = map_backend_error_to_user_message(exc_secret)
-        self.assertEqual(mapped, "Application is not configured with a Gemini API key.")
+        self.assertEqual(mapped, "Application is not configured with a valid Gemini API key.")
         self.assertNotIn("AIzaSySecretKey", mapped)
         self.assertNotIn("/home/user/path", mapped)
 

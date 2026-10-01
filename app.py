@@ -109,9 +109,13 @@ def map_backend_error_to_user_message(exc: Exception) -> str:
     """
     msg = str(exc).lower()
 
-    # API Key missing / unconfigured
-    if "api_key" in msg or "gemini_api_key" in msg or "api key" in msg:
-        return "Application is not configured with a Gemini API key."
+    # API Key missing / unconfigured / unauthorized
+    if "api_key" in msg or "gemini_api_key" in msg or "api key" in msg or "401" in msg or "403" in msg or "unauthorized" in msg:
+        return "Application is not configured with a valid Gemini API key."
+
+    # Rate limit / quota / 429
+    if "429" in msg or "quota" in msg or "rate limit" in msg or "resource_exhausted" in msg:
+        return "Gemini API rate limit or quota exceeded. Please wait a moment and try again."
 
     # Index unavailable / corrupt
     if isinstance(exc, FileNotFoundError) or "index" in msg or "faiss" in msg or "metadata" in msg:
