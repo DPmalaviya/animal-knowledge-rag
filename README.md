@@ -1,7 +1,7 @@
 # Animal Knowledge RAG Assistant
 
 [![Live Demo](https://img.shields.io/badge/Streamlit-Live%20Demo-ff4b4b?style=for-the-badge&logo=streamlit)](https://animal-knowledge-rag-bpnfy8iqoxqrbcyeasica2.streamlit.app/)
-[![License: CC-BY-4.0](https://img.shields.io/badge/License-CC--BY--4.0-blue.svg?style=for-the-badge)](data/README.md)
+[![Dataset: Public Domain + CC-BY](https://img.shields.io/badge/Dataset-Public%20Domain%20%2B%20CC--BY-blue.svg?style=for-the-badge)](data/README.md)
 [![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python)](requirements.txt)
 [![Tests: 188 Passing](https://img.shields.io/badge/Tests-188%20Passing-success?style=for-the-badge)](tests/)
 
@@ -50,7 +50,7 @@ An end-to-end Retrieval-Augmented Generation (RAG) system built to answer animal
 ```mermaid
 graph TD
     subgraph Offline Ingestion & Vector Indexing
-        A[9 Research PDFs / data/raw/] --> B[PyMuPDF Page Extraction]
+        A[9 Source PDFs / data/raw/] --> B[PyMuPDF Page Extraction]
         B --> C[Page-Bounded Paragraph Chunking / 272 Chunks]
         C --> D[Gemini Embedding 2 / 768-dim]
         D --> E[L2 Normalization & FAISS IndexFlatIP]

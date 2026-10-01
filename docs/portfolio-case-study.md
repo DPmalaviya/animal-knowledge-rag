@@ -21,7 +21,7 @@ The end-to-end architecture is divided into an offline ingestion phase and a rea
 ```mermaid
 graph TD
     subgraph Offline Ingestion & Vector Indexing
-        A[9 Research PDFs / data/raw/] --> B[PyMuPDF Text Extraction]
+        A[9 Source PDFs / data/raw/] --> B[PyMuPDF Text Extraction]
         B --> C[Page-Bounded Paragraph Chunking / 272 Chunks]
         C --> D[Gemini Embedding 2 / 768-dim]
         D --> E[L2 Normalization & FAISS IndexFlatIP]

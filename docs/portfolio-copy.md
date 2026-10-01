@@ -3,8 +3,8 @@
 ## 1. One-Line Description (27 words)
 An end-to-end Retrieval-Augmented Generation (RAG) system answering animal science questions with Gemini 3.8 Flash generation, 768-dimensional FAISS vector search, and deterministic application-level citation validation.
 
-## 2. Short Description (90 words)
-The Animal Knowledge RAG Assistant is a fact-grounded question-answering application built over a curated 9-document corpus combining government factsheets and peer-reviewed open-access research (85 physical pages). It pairs Google Gemini Embedding 2 (768-dim) vectors and a normalized FAISS IndexFlatIP store with Gemini 3.8 Flash generation. To enforce context constraints and reduce hallucination risk, the system applies strict context-grounding instructions and delegates citation metadata resolution to deterministic Python code. Malformed markers or unsupported claims trigger fail-closed validation or an exact fallback sentence. Verified with 188 automated unit tests and deployed publicly on Streamlit Community Cloud.
+## 2. Short Description (91 words)
+The Animal Knowledge RAG Assistant is a fact-grounded question-answering application built over a curated 9-document corpus combining government factsheets and peer-reviewed open-access research (85 physical pages). It pairs Google Gemini Embedding 2 (768-dim) vectors and a normalized FAISS IndexFlatIP store with Gemini 3.8 Flash generation. To enforce context constraints and reduce hallucination risk, the system applies strict context-grounding instructions and delegates citation metadata resolution to deterministic Python code. Malformed citation markers trigger fail-closed validation, while insufficient retrieved context triggers the exact fallback sentence. Verified with 188 automated unit tests and deployed publicly on Streamlit Community Cloud.
 
 ## 3. Medium Description (204 words)
 The Animal Knowledge RAG Assistant addresses factual grounding in domain-specific AI by implementing a context-constrained Retrieval-Augmented Generation (RAG) architecture over a curated 9-document corpus combining government factsheets and peer-reviewed open-access research.
