@@ -15,13 +15,13 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 7 | Vector Storage | ✅ CEO Approved | FAISS IndexFlatIP 768-dim vector index & metadata mapping |
 | 8 | Retrieval System | ✅ CEO Approved | Semantic Top-K context retrieval (K=4) with bounded retries & compatibility checks |
 | 9 | RAG Generation | ✅ CEO Approved | Grounded answer generation via gemini-3.8-flash & controlled C1..CK source IDs |
-| 10 | Citations & Grounding | 🟡 Needs CEO Review | Source/page citation resolution & fail-closed validation |
-| 11 | Web Application | 🔲 Planned | Streamlit web interface |
+| 10 | Citations & Grounding | ✅ CEO Approved | Source/page citation resolution & fail-closed validation |
+| 11 | Web Application | 🟡 Needs CEO Review | Streamlit web interface for grounded QA with safe citations |
 | 12 | Deployment | 🔲 Planned | Streamlit Community Cloud deployment |
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), retrieval system (Stage 8), grounded RAG generation (Stage 9), and citation resolution (Stage 10) are fully implemented and verified with **174 automated unit tests passing**. Streamlit UI (Stage 11) remains planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), retrieval system (Stage 8), grounded RAG generation (Stage 9), citation resolution (Stage 10), and web application (Stage 11) are fully implemented and verified with **187 automated unit tests passing**. Streamlit UI deployment (Stage 12) remains planned for future stages.
 
 
 ## Stage 4 — Document Ingestion Overview
@@ -145,6 +145,20 @@ Stage 10 implements a deterministic citation parsing, fail-closed validation, tr
 - **Exact Fallback Match**: The exact fallback (`"I don't have enough information in the provided sources to answer that question."`) contains 0 citations (`citation_group_count = 0`, `is_fallback = True`).
 - **Offline Processing Guarantee**: Resolving citations (`resolve_rag_citations`) operates 100% locally with 0 API calls, 0 network requests, and no API key required.
 
+## Stage 11 — Web Application Overview
+
+Stage 11 implements a clean, native Streamlit web interface (`app.py`) for the Animal Knowledge RAG Assistant.
+
+### Web Application Specifications & Architecture
+- **Framework & Version**: `streamlit==1.64.0`
+- **UI Entrypoint**: `app.py` with dependency-injectable `render_app(answer_fn=answer_with_citations)`.
+- **Form-Bound Invocation**: Single `st.form` submission executes `answer_with_citations` exactly once with fixed `top_k=4` and relative project index path `index`.
+- **Trusted Answer Boundary**: Renders `result["rendered_answer"]` exclusively using native Markdown with unsafe HTML disabled.
+- **Source Display & Grouping**: Groups identical source cards by `(filename, page_number, title, publisher, source_url)` while preserving first-appearance order and internal source/chunk IDs.
+- **Strict Link Validation**: Validates URLs via standard-library `urllib.parse.urlparse`. Only `http`/`https` links with valid netlocs render clickable button controls; invalid or non-web schemes display metadata without clickable links.
+- **Fail-Closed Error Safeguards**: Maps backend failures to public-safe messages without leaking secrets, process paths, tracebacks, or raw API payloads.
+- **Offline AppTest Suite**: 13 comprehensive AppTest tests (`tests/test_app.py`) verifying form submission, fixed `top_k=4` calls, supported output, fallback handling, grouping, URL validation, and secret sanitization without live API keys or FAISS index files.
+
 ## Running Execution and Tests
 
 ### 1. Installation
@@ -152,33 +166,27 @@ Install verified dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-*Pinned Dependencies:* `pymupdf==1.28.2`, `google-genai==2.26.0`, `numpy==2.4.3`, `faiss-cpu==1.15.1`.
+*Pinned Dependencies:* `pymupdf==1.28.2`, `google-genai==2.26.0`, `numpy==2.4.3`, `faiss-cpu==1.15.1`, `streamlit==1.64.0`.
 
 ### 2. Run Automated Offline Test Suite
-Execute the full offline unit test suite covering Stages 4, 5, 6, 7, 8, 9, and 10 (requires no network calls or API keys):
+Execute the full offline unit test suite covering Stages 4, 5, 6, 7, 8, 9, 10, and 11 (requires no network calls or API keys):
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* **174 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 24 Stage 8 retrieval, 20 Stage 9 generation, 58 Stage 10 citation offline tests).
+*Coverage:* **187 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 24 Stage 8 retrieval, 20 Stage 9 generation, 58 Stage 10 citation offline tests, 13 Stage 11 web app tests).
 
-### 3. Run Stage 8 Retrieval CLI (Requires GEMINI_API_KEY)
-To execute live Top-K semantic retrieval for a user question:
+### 3. Launch Streamlit Web Application (Requires GEMINI_API_KEY)
+To run the web interface locally:
 ```bash
-python -m src.retrieval --query "How long do bald eagle eggs take to hatch?" --top-k 4
+streamlit run app.py
 ```
+*Requirements:* Local index files (`index/`) and `GEMINI_API_KEY` set in process environment. `.env.example` is a template only; application code does not automatically load `.env`.
 
-### 4. Run Stage 9 Grounded RAG Generation CLI (Requires GEMINI_API_KEY)
-To execute end-to-end retrieval and grounded answer generation:
-```bash
-python -m src.generation --query "How does lead ammunition expose bald eagles to lead?" --top-k 4
-```
-
-### 5. Run Stage 10 Citations & Grounding CLI (Requires GEMINI_API_KEY)
-To execute end-to-end RAG with filename and page citation rendering:
+### 4. Run Stage 10 Citations & Grounding CLI (Requires GEMINI_API_KEY)
+To execute end-to-end RAG with filename and page citation rendering via CLI:
 ```bash
 python -m src.citations --query "How does lead ammunition expose bald eagles to lead?" --top-k 4
 ```
-*Requirement:* Existing Stage 7 index artifacts (`index/`) and `GEMINI_API_KEY` configured in the process environment. `.env.example` is a template only; application code does not automatically load `.env`.
 
 ## RAG Pipeline Architecture
 
@@ -190,8 +198,9 @@ Text-based PDFs (data/raw/)
   → Stage 7: Vector Storage (FAISS IndexFlatIP) (Completed)
   → Stage 8: Retrieval System (Top-K Context) (Completed)
   → Stage 9: Grounded RAG Generation (Gemini 3.8 Flash) (Completed)
-  → Stage 10: Citations & Grounding (Deterministic Resolution) (Awaiting CEO Review)
-  → Stage 11: Web Application (Streamlit) (Planned)
+  → Stage 10: Citations & Grounding (Deterministic Resolution) (Completed)
+  → Stage 11: Web Application (Streamlit) (Awaiting CEO Review)
+  → Stage 12: Deployment (Planned)
 ```
 
 ## Project Structure
