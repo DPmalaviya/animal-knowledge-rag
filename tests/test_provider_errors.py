@@ -48,6 +48,16 @@ class TestProviderErrors(unittest.TestCase):
         self.assertTrue(is_quota_error(error))
         self.assertTrue(is_daily_quota_error(error))
 
+    def test_known_daily_quota_id_without_status_is_daily_quota(self):
+        error = ProviderError("GenerateRequestsPerDayPerProjectPerModel-FreeTier")
+
+        self.assertTrue(is_daily_quota_error(error))
+
+    def test_per_day_limit_without_status_is_daily_quota(self):
+        error = ProviderError("Generate requests per day limit reached")
+
+        self.assertTrue(is_daily_quota_error(error))
+
     def test_daily_quota_wording_is_daily_quota(self):
         error = ProviderError("Daily quota exceeded", code=429)
 
@@ -70,6 +80,11 @@ class TestProviderErrors(unittest.TestCase):
         error = ValueError("Embedding response was malformed")
 
         self.assertFalse(is_quota_error(error))
+        self.assertFalse(is_daily_quota_error(error))
+
+    def test_unrelated_daily_text_is_not_daily_quota(self):
+        error = ValueError("The daily animal report was malformed")
+
         self.assertFalse(is_daily_quota_error(error))
 
     def test_exception_chain_is_inspected(self):
