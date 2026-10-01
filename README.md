@@ -94,8 +94,7 @@ Stage 7 implements FAISS vector index construction, float32 matrix normalization
 Written atomically via temporary `.tmp` files to prevent partially updated states:
 - `index/faiss.index`: Native FAISS index binary file.
 - `index/chunk_metadata.json`: Deterministic JSON metadata array.
-- `index/index_manifest.json`: Index parameters, file SHA-256 checksums, and ordered chunk IDs fingerprint (`ordered_chunk_ids_sha256`).
-- *All `index/*` files are ignored by Git via `.gitignore` (except `.gitkeep`).*
+- The three approved runtime artifacts (`index/faiss.index`, `index/chunk_metadata.json`, and `index/index_manifest.json`) are tracked in Git for Streamlit Community Cloud deployment. Other generated `index/*` files remain ignored.
 
 ## Stage 8 — Retrieval System Overview
 
