@@ -301,14 +301,83 @@ class TestExtractiveAnswer(unittest.TestCase):
             "Eagle appears again. [C1]",
         )
 
+    def test_broad_single_token_overlap_does_not_answer_specific_question(self):
+        records = [self.ranked_record(0, text="Eagles ingest lead fragments.")]
+        result = resolve_extractive_result("Do eagles fly at night?", records)
+        self.assertTrue(result["is_fallback"])
+        self.assertEqual(result["raw_answer"], INSUFFICIENT_CONTEXT_FALLBACK)
+
+    def test_multi_term_same_topic_without_answer_falls_back(self):
+        records = [
+            self.ranked_record(0, text="Bald eagles ingest lead fragments.")
+        ]
+        result = resolve_extractive_result(
+            "How do bald eagles build winter nests?", records
+        )
+        self.assertTrue(result["is_fallback"])
+
+    def test_missing_negation_and_key_terms_conservatively_falls_back(self):
+        records = [self.ranked_record(0, text="Bald eagles have broad wings.")]
+        result = resolve_extractive_result(
+            "Do bald eagles not ingest lead?", records
+        )
+        self.assertTrue(result["is_fallback"])
+
+    def test_genuinely_supported_specific_question_remains_answerable(self):
+        records = [
+            self.ranked_record(0, text="Bald eagles ingest lead fragments.")
+        ]
+        result = resolve_extractive_result(
+            "How do bald eagles ingest lead fragments?", records
+        )
+        self.assertFalse(result["is_fallback"])
+        self.assertIn("Bald eagles ingest lead fragments.", result["raw_answer"])
+
+    def test_source_sentences_with_controlled_marker_syntax_are_skipped(self):
+        marker_cases = ("[C1]", "[C9]", "[C2]", "[c1]", "[C-1]", "[C 1]", "[C]")
+        for marker in marker_cases:
+            records = [
+                self.ranked_record(
+                    0,
+                    text=f"Bald eagles ingest lead fragments {marker}.",
+                )
+            ]
+            with self.subTest(marker=marker):
+                result = resolve_extractive_result(
+                    "How do bald eagles ingest lead fragments?", records
+                )
+                self.assertTrue(result["is_fallback"])
+                self.assertEqual(result["citation_ids"], [])
+
+    def test_ordinary_bracket_text_is_preserved_as_source_prose(self):
+        sentence = "Bald eagles ingest lead fragments [CITES Appendix I]."
+        records = [self.ranked_record(0, text=sentence)]
+        result = resolve_extractive_result(
+            "How do bald eagles ingest lead fragments?", records
+        )
+        self.assertFalse(result["is_fallback"])
+        self.assertIn(sentence, result["rendered_answer"])
+
+    def test_real_corpus_extractive_resolution_smoke(self):
+        question = "How are bald eagles exposed to lead?"
+        records = retrieve_locally(question, index_dir="index", top_k=4)
+        result = resolve_extractive_result(question, records)
+        self.assertFalse(result["is_fallback"])
+        self.assertEqual(result["answer_mode"], "offline_extractive")
+        self.assertNotRegex(result["rendered_answer"], r"\[C[1-9]\d*\]")
+        self.assertGreater(len(result["citations"]), 0)
+        self.assertEqual(
+            result["unique_citation_count"], len(result["citation_ids"])
+        )
+
     def test_deduplicates_normalized_sentence_text(self):
         records = [
             self.ranked_record(0, rank=1, text="Eagles   eat fish."),
-            self.ranked_record(1, rank=2, text="  eagles eat FISH.  Another eagle fact."),
+            self.ranked_record(1, rank=2, text="  eagles eat FISH.  Another eagles fact."),
         ]
         result = build_extractive_rag_result("eagles fish fact", records)
         self.assertEqual(result["answer"].count("eat"), 1)
-        self.assertIn("Another eagle fact. [C2]", result["answer"])
+        self.assertIn("Another eagles fact. [C2]", result["answer"])
 
     def test_selects_at_most_three_sentences_and_600_source_characters(self):
         text = " ".join(f"Eagle evidence sentence {i}." for i in range(1, 8))

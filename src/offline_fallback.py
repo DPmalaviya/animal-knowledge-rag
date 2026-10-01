@@ -99,6 +99,15 @@ def _sentence_dedup_key(sentence: str) -> str:
     return _WHITESPACE_RE.sub(" ", sentence).lower()
 
 
+def _contains_controlled_citation_syntax(sentence: str) -> bool:
+    from src.citations import parse_citation_groups
+
+    try:
+        return bool(parse_citation_groups(sentence))
+    except ValueError:
+        return True
+
+
 def build_offline_fallback_result(question: str) -> Dict[str, Any]:
     """Return the final citation-stage shape for unsupported offline questions."""
     from src.generation import DEFAULT_GENERATION_MODEL, INSUFFICIENT_CONTEXT_FALLBACK
@@ -134,17 +143,24 @@ def build_extractive_rag_result(
     query_terms = set(tokenize_meaningful(question))
     if not query_terms:
         return None
+    minimum_distinct_overlap = (
+        1 if len(query_terms) <= 2 else max(2, math.ceil(len(query_terms) / 2))
+    )
 
     candidates: List[Tuple[int, int, int, str, str]] = []
     for record_index, record in enumerate(retrieval_records):
         source_id = f"C{record_index + 1}"
         for sentence_position, sentence in enumerate(split_sentences(record["text"])):
             counts = Counter(tokenize_meaningful(sentence))
-            score = sum(counts[term] for term in query_terms)
-            if score:
-                candidates.append(
-                    (score, record["rank"], sentence_position, sentence, source_id)
-                )
+            overlap = query_terms.intersection(counts)
+            if len(overlap) < minimum_distinct_overlap:
+                continue
+            if _contains_controlled_citation_syntax(sentence):
+                continue
+            score = sum(counts[term] for term in overlap)
+            candidates.append(
+                (score, record["rank"], sentence_position, sentence, source_id)
+            )
 
     candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
     selected: List[Tuple[str, str]] = []
