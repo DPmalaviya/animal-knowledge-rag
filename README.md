@@ -154,7 +154,7 @@ To execute end-to-end retrieval and grounded answer generation:
 ```bash
 python -m src.generation --query "How does lead ammunition expose bald eagles to lead?" --top-k 4
 ```
-*Requirement:* Existing Stage 7 index artifacts (`index/`) and `GEMINI_API_KEY` configured in process environment or `.env`.
+*Requirement:* Existing Stage 7 index artifacts (`index/`) and `GEMINI_API_KEY` configured in the process environment. `.env.example` is a template only; application code does not automatically load `.env`.
 
 ## RAG Pipeline Architecture
 
