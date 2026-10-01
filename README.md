@@ -16,12 +16,12 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 8 | Retrieval System | ✅ CEO Approved | Semantic Top-K context retrieval (K=4) with bounded retries & compatibility checks |
 | 9 | RAG Generation | ✅ CEO Approved | Grounded answer generation via gemini-3.8-flash & controlled C1..CK source IDs |
 | 10 | Citations & Grounding | ✅ CEO Approved | Source/page citation resolution & fail-closed validation |
-| 11 | Web Application | 🟡 Needs CEO Review | Streamlit web interface for grounded QA with safe citations |
-| 12 | Deployment | 🔲 Planned | Streamlit Community Cloud deployment |
+| 11 | Web Application | ✅ CEO Approved | Streamlit web interface for grounded QA with safe citations |
+| 12 | Deployment | 🟡 Needs CEO Review | Streamlit Community Cloud public deployment & verification |
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), retrieval system (Stage 8), grounded RAG generation (Stage 9), citation resolution (Stage 10), and web application (Stage 11) are fully implemented and verified with **188 automated unit tests passing**. Streamlit UI deployment (Stage 12) remains planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), retrieval system (Stage 8), grounded RAG generation (Stage 9), citation resolution (Stage 10), and web application (Stage 11) are fully implemented and CEO-approved. Streamlit deployment (Stage 12) is packaged and awaiting final CEO review with **188 automated unit tests passing**.
 
 
 ## Stage 4 — Document Ingestion Overview
@@ -157,7 +157,21 @@ Stage 11 implements a clean, native Streamlit web interface (`app.py`) for the A
 - **Source Display & Grouping**: Groups identical source cards by `(filename, page_number, title, publisher, source_url)` while preserving first-appearance order and internal source/chunk IDs.
 - **Strict Link Validation**: Validates URLs via standard-library `urllib.parse.urlparse`. Only `http`/`https` links with valid netlocs render clickable button controls; invalid or non-web schemes display metadata without clickable links.
 - **Fail-Closed Error Safeguards**: Maps backend failures to public-safe messages without leaking secrets, process paths, tracebacks, or raw API payloads.
-- **Offline AppTest Suite**: 13 comprehensive AppTest tests (`tests/test_app.py`) verifying form submission, fixed `top_k=4` calls, supported output, fallback handling, grouping, URL validation, and secret sanitization without live API keys or FAISS index files.
+- **Offline AppTest Suite**: 14 comprehensive AppTest tests (`tests/test_app.py`) verifying form submission, fixed `top_k=4` calls, supported output, fallback handling, grouping, URL validation, and secret sanitization without live API keys or FAISS index files.
+
+## Stage 12 — Deployment Overview
+
+Stage 12 packages the application and its verified runtime vector index artifacts for public cloud hosting on **Streamlit Community Cloud**.
+
+### Deployment Specifications & Runtime Artifact Policy
+- **Platform**: Streamlit Community Cloud (Python 3.13)
+- **Repository**: `DPmalaviya/animal-knowledge-rag` (Branch: `main`, Entrypoint: `app.py`)
+- **Root Secret Configuration**: `GEMINI_API_KEY` configured securely via platform secret interface (`st.secrets`). No `.env` files or API key input fields exist in code or repository.
+- **Tracked Runtime Index Policy**:
+  - `index/faiss.index` (835,629 bytes | SHA-256: `a5622eb106e81a4cc151d6ed33939239291f1da6df48329fc5ffa0a3b966038e`)
+  - `index/chunk_metadata.json` (604,932 bytes | SHA-256: `814cab2575bfe63060321faafc20f971dc11c6a7a59c18dbc75876275c617877`)
+  - `index/index_manifest.json` (495 bytes | SHA-256: `65ba5bc1a8d1a7bb700e0d614dceb98d9329c2ae5fbc904995a6f0cd3be507ef`)
+  - *All other generated files under `index/*` and `data/processed/*` (including `chunk_embeddings.json`) remain ignored by `.gitignore`.*
 
 ## Running Execution and Tests
 
@@ -199,8 +213,9 @@ Text-based PDFs (data/raw/)
   → Stage 8: Retrieval System (Top-K Context) (Completed)
   → Stage 9: Grounded RAG Generation (Gemini 3.8 Flash) (Completed)
   → Stage 10: Citations & Grounding (Deterministic Resolution) (Completed)
-  → Stage 11: Web Application (Streamlit) (Awaiting CEO Review)
-  → Stage 12: Deployment (Planned)
+  → Stage 11: Web Application (Streamlit) (Completed)
+  → Stage 12: Deployment (Streamlit Community Cloud) (Awaiting CEO Review)
+  → Stage 13: Portfolio Integration (Planned)
 ```
 
 ## Project Structure

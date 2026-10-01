@@ -1,0 +1,12 @@
+{
+  "index_type": "IndexFlatIP",
+  "metric_type": "METRIC_INNER_PRODUCT",
+  "dimension": 768,
+  "vector_count": 272,
+  "metadata_count": 272,
+  "embedding_model": "gemini-embedding-2",
+  "is_normalized": true,
+  "ordered_chunk_ids_sha256": "90cfc2703aaf07fb456c61c5415ca553913f833dc07f7b57860aebb23f306203",
+  "faiss_index_sha256": "a5622eb106e81a4cc151d6ed33939239291f1da6df48329fc5ffa0a3b966038e",
+  "chunk_metadata_sha256": "814cab2575bfe63060321faafc20f971dc11c6a7a59c18dbc75876275c617877"
+}

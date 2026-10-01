@@ -12,3 +12,6 @@ data/processed/*
 !data/processed/.gitkeep
 index/*
 !index/.gitkeep
+!index/faiss.index
+!index/chunk_metadata.json
+!index/index_manifest.json
