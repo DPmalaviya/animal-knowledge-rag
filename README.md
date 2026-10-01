@@ -1,8 +1,17 @@
 # Animal Knowledge RAG Assistant
 
-A portfolio/demo application designed to answer animal-related questions using public/demo documents and cite its sources. Built with a Retrieval-Augmented Generation (RAG) architecture.
+[![Live Demo](https://img.shields.io/badge/Streamlit-Live%20Demo-ff4b4b?style=for-the-badge&logo=streamlit)](https://animal-knowledge-rag-bpnfy8iqoxqrbcyeasica2.streamlit.app/)
+[![License: CC-BY-4.0](https://img.shields.io/badge/License-CC--BY--4.0-blue.svg?style=for-the-badge)](data/README.md)
+[![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python)](requirements.txt)
+[![Tests: 188 Passing](https://img.shields.io/badge/Tests-188%20Passing-success?style=for-the-badge)](tests/)
 
-## Current Status
+A production-grade Retrieval-Augmented Generation (RAG) system built to answer animal science questions using a curated demo dataset of public research documents. Features semantic vector retrieval, grounded answer generation, deterministic citation resolution, and a clean Streamlit web application.
+
+🚀 **[Try the Live Web Application](https://animal-knowledge-rag-bpnfy8iqoxqrbcyeasica2.streamlit.app/)**
+
+---
+
+## Current Status & Roadmap
 
 | # | Stage | Status | Notes |
 |---|-------|--------|-------|
@@ -17,161 +26,110 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 9 | RAG Generation | ✅ CEO Approved | Grounded answer generation via gemini-3.8-flash & controlled C1..CK source IDs |
 | 10 | Citations & Grounding | ✅ CEO Approved | Source/page citation resolution & fail-closed validation |
 | 11 | Web Application | ✅ CEO Approved | Streamlit web interface for grounded QA with safe citations |
-| 12 | Deployment | 🟡 Needs CEO Review | Streamlit Community Cloud public deployment & verification |
-| 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
+| 12 | Deployment | ✅ CEO Approved | Streamlit Community Cloud public deployment & verification |
+| 13 | Portfolio Integration | 🟡 Needs CEO Review | Case study, portfolio copy, and documentation refactoring |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), retrieval system (Stage 8), grounded RAG generation (Stage 9), citation resolution (Stage 10), and web application (Stage 11) are fully implemented and CEO-approved. Streamlit deployment (Stage 12) is packaged and awaiting final CEO review with **188 automated unit tests passing**.
+> **Note:** Stages 1 through 12 are fully implemented and CEO-approved. Stage 13 portfolio documentation is complete and awaiting final CEO review with **188 automated unit tests passing**. Stage 14 evaluation remains planned.
 
+---
 
-## Stage 4 — Document Ingestion Overview
+## Key Features
 
-Stage 4 implements robust, page-level PDF text extraction and strict dataset validation using [PyMuPDF](https://pymupdf.readthedocs.io/).
+- **Grounded RAG Generation:** Grounded answer generation using `gemini-3.8-flash` with low thinking level and strict prompt anti-hallucination instructions.
+- **768-dim Semantic Vector Storage:** Prebuilt FAISS `IndexFlatIP` storing normalized 768-dimensional `gemini-embedding-2` vectors for 272 document chunks.
+- **Deterministic Citation Trust Boundary:** Model outputs controlled source IDs (`[C1]`, `[C2]`), while application code deterministically validates grammar, looks up trusted metadata, and renders inline filename/page references.
+- **Fail-Closed Fallback Policy:** Emits exact fallback sentence (`"I don't have enough information in the provided sources to answer that question."`) when context is insufficient.
+- **Streamlit Web Application:** Interactive interface built with Streamlit 1.64.0, form-bound submissions, source card grouping, and URL validation.
+- **100% Offline Test Suite:** 188 automated unit tests covering all modules including offline Streamlit `AppTest` interface rendering.
 
-### Dataset Corpus
-- **9 documents / 85 physical pages**
-- Manifest: `data/dataset_manifest.csv`
-- Source PDFs: `data/raw/`
-- Total raw extracted characters: **500,649**
+---
 
-## Stage 5 — Text Processing & Chunking Overview
+## Architecture & System Flow
 
-Stage 5 implements non-destructive text normalization and deterministic, page-bounded paragraph chunking (`src/processing.py` and `src/chunking.py`).
+```mermaid
+graph TD
+    subgraph Offline Ingestion & Vector Indexing
+        A[9 Research PDFs / data/raw/] --> B[PyMuPDF Page Extraction]
+        B --> C[Page-Bounded Paragraph Chunking / 272 Chunks]
+        C --> D[Gemini Embedding 2 / 768-dim]
+        D --> E[L2 Normalization & FAISS IndexFlatIP]
+        E --> F[Tracked Index Files / index/]
+    end
 
-### Corpus Metrics & Integrity
-- **Total Chunks Generated:** **272 chunks** across 9 documents and 85 distinct physical pages.
-- **Chunk Sizing:** Target 450 tokens (~1,800 chars), Hard Max 600 tokens (~2,400 chars).
-- **Deterministic Chunk IDs:** `{document_id}_p{page_number:03d}_c{chunk_index:03d}`.
+    subgraph Query-Time Execution & Citation Trust Boundary
+        G[User Question] --> H[Gemini Query Embedding / gemini-embedding-2]
+        H --> I[L2 Normalization]
+        I --> J[FAISS Top-4 Search]
+        J --> K[Ranked Context Chunks + C1..C4 IDs]
+        K --> L[Gemini 3.8 Flash Generation]
+        L --> M[Raw Answer with C-IDs]
+        M --> N[Stage 10 Deterministic Citation Parser]
+        N --> O[Streamlit UI Rendered Answer & Source Cards]
+    end
+```
 
-## Stage 6 — Embeddings Overview
+---
 
-Stage 6 implements 768-dimensional vector embedding generation using the official `google-genai` SDK and the `gemini-embedding-2` model (`src/embeddings.py`).
+## Grounding & Citation Trust Boundary
 
-### Embedding Specifications & SDK Response Contract
-- **SDK**: `google-genai==2.26.0` (`from google import genai`, `from google.genai import types`)
-- **Model Identifier**: `gemini-embedding-2`
-- **Output Dimensionality**: 768 (`config=types.EmbedContentConfig(output_dimensionality=768)`)
-- **SDK Response Contract**: Reads the plural field `response.embeddings`, requires exactly one returned embedding object (`len(response.embeddings) == 1`), and validates `response.embeddings[0].values`. Zero embeddings or multiple embeddings are explicitly rejected.
-- **Document Input Format**: `title: {title} | text: {chunk_text}` (preserves original chunk text and metadata without injecting IDs or URLs into semantic input)
-- **Reserved Question Format (Stage 8)**: `task: question answering | query: {question}`
-- **Request Strategy**: One chunk per request (sequential execution with bounded retries and exponential backoff).
-- **Vector Integrity**: Verifies that returned vectors have length 768, contain 100% finite numeric floats, and have a non-zero L2 norm. Returned vectors are preserved as-is without re-normalization.
+A core principle of this project is that **Gemini output is NOT authoritative citation metadata**:
 
-### Live Validation & Execution Results
-- **Full Corpus Execution:** 272 / 272 chunks embedded successfully.
-- **Model Identifier:** `gemini-embedding-2`
-- **Output Dimensionality:** 768 dimensions per vector.
-- **Failed Chunks:** 0
-- **Missing, Extra, or Duplicate IDs:** 0
-- **Text & Metadata Preservation:** Exact preservation of original text, titles, document IDs, page numbers, and filenames.
-- **Generated Artifact:** Saved atomically to `data/processed/chunk_embeddings.json` (4.46 MB, validated, and kept gitignored / outside Git).
-- **Automated Test Suite:** 50 automated tests passing, as recorded in the accepted evidence.
+1. **Controlled Identifiers:** Retrieved chunks are labeled `[C1]` through `[C4]`.
+2. **Deterministic Resolution:** Stage 10 Python code (`src/citations.py`) parses bracketed markers against strict grammar rules, verifies canonical C-ID existence in the Stage 9 `source_map`, extracts filenames and physical page numbers, and renders user-facing references (e.g. `(bald_eagle_lead_exposure.pdf, p. 1)`).
+3. **Fail-Closed Validation:** Malformed syntax (`[c1]`, `[C0]`, `[C1; C2]`), unknown IDs, or supported answers missing citations are immediately rejected.
+4. **Entailment Limitation:** Citation provenance validation verifies syntactic structure, canonical ID existence, and metadata lookup integrity—it is not the same as verifying that every cited passage semantically supports every answer claim. Formal answer-quality evaluation remains planned for Stage 14.
 
-#### Measured L2 Norm Statistics
-- **Minimum L2 Norm:** `0.999999105449`
-- **Mean L2 Norm:** `0.999999996118`
-- **Maximum L2 Norm:** `1.000000603547`
+---
 
-#### Runtime & Rate Limit Pacing Performance
-- **Configured Inter-Request Pacing:** 4.2 seconds delay between sequential requests (14.28 RPM) to adhere strictly to the Gemini API Free Tier 15 RPM rate limit.
-- **Theoretical Pacing-Only Delay:** 271 × 4.2 seconds = 1,138.2 seconds, approximately 19 minutes.
-- **Observed End-to-End Runtime:** Approximately 24 minutes, based on the recorded execution evidence.
+## Technology Stack
 
-## Stage 7 — Vector Storage Overview
+- **UI Framework:** `streamlit==1.64.0` (Python 3.13)
+- **LLM & Embeddings:** `google-genai==2.26.0` (`gemini-3.8-flash` & `gemini-embedding-2`)
+- **Vector Database:** `faiss-cpu==1.15.1` (`IndexFlatIP` float32 768-dim)
+- **PDF Extraction:** `pymupdf==1.28.2`
+- **Data Processing:** `numpy==2.4.3`
+- **Testing:** `unittest` + `streamlit.testing.v1.AppTest`
 
-Stage 7 implements FAISS vector index construction, float32 matrix normalization, integer-ID-to-metadata mapping, and persistent storage (`src/vector_store.py`).
+---
 
-### Vector Storage Specifications & Architecture
-- **Index Class**: `faiss.IndexFlatIP(768)` (Flat inner-product index using `METRIC_INNER_PRODUCT`).
-- **Matrix Contract**: Independent 2D `float32` C-contiguous NumPy matrix of shape `(272, 768)` converted directly from the Stage 6 embeddings artifact.
-- **Defensive L2 Normalization**: Row-wise L2-normalized using `faiss.normalize_L2(matrix)` prior to index insertion. Post-normalization row norms are verified to be ~1.0 (`Min=1.000000, Max=1.000000, Mean=1.000000`).
-- **Cosine-via-Inner-Product Contract**: Document vectors are normalized before storage. When Stage 8 normalizes query vectors, inner product matches cosine similarity.
-- **Integer ID Mapping**: FAISS IDs `0` through `271` mapped directly to chunk metadata dictionaries. Full 768-element vector array is excluded from metadata JSON to prevent redundant storage.
-- **Offline Guarantee**: Requires **zero Gemini API calls** and operates without `GEMINI_API_KEY`.
-- **Reconstruction Verification**: 100% accuracy (`272/272` vectors reconstructed via `index.reconstruct(i)` matched stored float32 matrix within numerical comparison tolerance `rtol=1e-5, atol=1e-5`).
+## Curated Demo Corpus
 
-### Persistent Index Artifacts (`index/`)
-Written atomically via temporary `.tmp` files to prevent partially updated states:
-- `index/faiss.index`: Native FAISS index binary file.
-- `index/chunk_metadata.json`: Deterministic JSON metadata array.
-- The three approved runtime artifacts (`index/faiss.index`, `index/chunk_metadata.json`, and `index/index_manifest.json`) are tracked in Git for Streamlit Community Cloud deployment. Other generated `index/*` files remain ignored.
+The system operates over a curated dataset of **9 peer-reviewed & public research PDFs** (85 physical pages, 272 chunks):
+- **Bald Eagles:** Lead exposure from big game hunting (`bald_eagle_lead_exposure.pdf`) & FWS factsheet (`bald_eagle_factsheet.pdf`).
+- **Monarch Butterflies:** Flight performance (`monarch_flight_performance.pdf`) & factsheet (`monarch_butterfly_factsheet.pdf`).
+- **Humpback Whales:** NOAA factsheet (`humpback_whale_factsheet.pdf`) & migration study (`humpback_whale_migration.pdf`).
+- **Green Sea Turtles:** NOAA factsheet (`green_sea_turtle_factsheet.pdf`) & nesting study (`green_sea_turtle_nesting.pdf`).
+- **African Elephants:** Reintegration and stress physiology (`african_elephant_reintegration.pdf`).
 
-## Stage 8 — Retrieval System Overview
+Full details and Creative Commons attribution are documented in [data/README.md](data/README.md) and [data/dataset_manifest.csv](data/dataset_manifest.csv).
 
-Stage 8 implements semantic Top-K document chunk retrieval using Gemini query embeddings and local FAISS vector search (`src/retrieval.py`).
+---
 
-### Retrieval Specifications & Architecture
-- **Query Format**: `task: question answering | query: {question}` (preserves original user question string without lowercasing or transforming).
-- **Query Model & Dimension**: `gemini-embedding-2` producing 768-dimensional float vectors via official `google-genai` SDK (`client.models.embed_content`).
-- **Bounded Query-Embedding Retries**: Configurable `max_retries=3`, `retry_delay=1.0` (allowing up to 4 total attempts). Implements capped exponential backoff sleeping only between attempts. Non-transient errors (401, 403, 400) fail immediately. Transient errors (503, 429) retry up to the retry limit. Exhausted retries raise an explicit failure.
-- **Query/Index Compatibility Enforcement**: Verifies query `model_name` (`gemini-embedding-2`) and `dimension` (`768`) match `manifest["embedding_model"]`, `manifest["dimension"]`, and FAISS index dimension `index.d` **prior** to client initialization or making live API calls.
-- **Query Matrix Normalization**: Converted to 2D `float32` C-contiguous array `(1, 768)` and row-wise L2-normalized via `faiss.normalize_L2(query_matrix)` prior to search.
-- **Top-K Search Strategy**: Default `DEFAULT_TOP_K = 4`. Performs `scores, ids = index.search(query_matrix, top_k)` against the Stage 7 `IndexFlatIP` store. Inner product scores represent exact cosine similarity.
-- **Prerequisite Validation Order**: Question non-emptiness, index store availability, `top_k` bounds (`1 <= top_k <= 272`), and query/index model & dimension compatibility are validated **before** invoking the Gemini API endpoint, protecting API quota from invalid calls.
-- **Full-Text Result Contract**: Each returned result entry includes `rank` (1..K), `faiss_id`, `similarity_score`, `chunk_id`, `document_id`, `filename`, `page_number`, `chunk_index`, full un-truncated `text` (preserved for Stage 9 RAG generation), `title`, `publisher`, `source_url`, `estimated_token_count`, `embedding_model`, and `embedding_dimension`. Vector arrays are excluded.
-- **Sanity Set Scope & Retrieval Results**: Evaluated on an 8-question, hand-selected cross-corpus sanity set covering 8 target source documents across the approved 9-document corpus. The Monarch Butterfly factsheet (`monarch_butterfly_factsheet.pdf`) was not a dedicated expected source in this set. Achieving 8/8 describes expected-source presence for these hand-selected questions; it is not a general retrieval-accuracy measurement. Source-file presence alone does not establish that every returned chunk supports an answer.
-- **Baseline Preservation**: Reranking remains deferred. The dense Top-K retrieval baseline is preserved as-is.
+## Engineering Decisions & Tradeoffs
 
-## Stage 9 — RAG Generation Overview
+- **Plain Python vs. Heavy Frameworks:** Using raw Python and native SDKs made control flow, error handling, and citation boundaries 100% explicit without black-box framework abstractions.
+- **Exact IndexFlatIP Search:** Flat inner-product search provides exact nearest-neighbor matching for 272 vectors without quantization loss.
+- **Cosine Similarity via L2 Normalization:** Document and query vectors are row-wise L2-normalized prior to search so inner product matches cosine similarity.
+- **Tracked Runtime Index Artifacts:** Shipping `index/faiss.index`, `index/chunk_metadata.json`, and `index/index_manifest.json` in Git enables instant deployment on Streamlit Community Cloud without re-embedding the corpus at startup.
 
-Stage 9 implements grounded answer generation using the Gemini 3.8 Flash model, trusted system instructions, controlled `C1..CK` source identifiers, and Stage 8 retrieval context (`src/generation.py`).
+---
 
-### Generation Specifications & Architecture
-- **Generation Model**: `gemini-3.8-flash` via official `google-genai` SDK (`client.models.generate_content`).
-- **Thinking Level**: Configured to `low` (`types.ThinkingConfig(thinking_level="low")`) to reduce latency and reasoning overhead.
-- **Generation Hyperparameters**: Temperature, `top_p`, and `top_k` remain un-overridden (using Gemini 3.x default parameters).
-- **Prohibition of External Knowledge & Tools**: No external tools (`google_search`, `url_context`, `code_execution`, `file_search`) are enabled. Generation is strictly grounded in local retrieved context.
-- **Trusted System Instruction**: Explicitly treats source context as untrusted data blocks (`[C1]...[/C1]`), prohibiting prompt-injection overrides and constraining answers to retrieved facts.
-- **Controlled Source Identifiers**: Maps Stage 8 retrieval rank order deterministically to controlled generation source IDs (`C1`, `C2`, `C3`, `C4`).
-- **Exact Grounded Fallback Sentence**: If retrieved context is insufficient, the system emits:
-  `"I don't have enough information in the provided sources to answer that question."`
-- **Citation Rendering Boundary**: Raw `[C1]` markers and `source_map` records are returned as-is. Final citation parsing, validation, and filename/page rendering remain deferred to Stage 10 (`src/citations.py`).
+## Example RAG Execution
 
-## Stage 10 — Citations & Grounding Overview
+### Query: *"How does lead ammunition expose bald eagles to lead?"*
 
-Stage 10 implements a deterministic citation parsing, fail-closed validation, trusted metadata lookup, and user-facing filename/page rendering pipeline (`src/citations.py`).
+#### Rendered Output:
+> Bald eagles scavenge remains containing lead fragments (bald_eagle_lead_exposure.pdf, p. 1).
 
-### Citation Specifications & Architecture
-- **Citation Authority**: Application code (Gemini output is NOT authoritative citation metadata).
-- **Controlled Marker Grammar**: Validates `[C1]`, `[C1, C2]`, `[C1, C2, C4]` markers. Rejects `[C0]`, `[C01]`, `[c1]`, `[C1; C2]`, `[C1 C2]`, `[C1,]`, and duplicate markers `[C1, C1]`.
-- **Fail-Closed Policy**: Rejects unknown source IDs (e.g. `[C99]`), malformed marker syntax, or supported non-fallback answers missing citations.
-- **Trusted Metadata Lookup**: Filenames and 1-based physical page numbers are read exclusively from Stage 9 `source_map` records.
-- **User-Facing Inline Rendering**:
-  - Single page: `(bald_eagle_lead_exposure.pdf, p. 1)`
-  - Multiple pages same document: `(african_elephant_reintegration.pdf, pp. 2, 3)`
-  - Multiple documents: `(file_a.pdf, p. 1; file_b.pdf, pp. 2, 4)`
-  - Identical file/page references within the same group collapse to a single reference.
-- **Exact Fallback Match**: The exact fallback (`"I don't have enough information in the provided sources to answer that question."`) contains 0 citations (`citation_group_count = 0`, `is_fallback = True`).
-- **Offline Processing Guarantee**: Resolving citations (`resolve_rag_citations`) operates 100% locally with 0 API calls, 0 network requests, and no API key required.
+#### Rendered Source Card:
+- **Title:** *Lead Exposure in Bald Eagles from Big Game Hunting, the Continental Implications and Successful Mitigation Efforts*
+- **Filename:** `bald_eagle_lead_exposure.pdf`
+- **Physical Page:** `p. 1`
+- **Publisher:** PLOS ONE
+- **Source Document:** [🌐 View Source Document](https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0051978&type=printable)
 
-## Stage 11 — Web Application Overview
-
-Stage 11 implements a clean, native Streamlit web interface (`app.py`) for the Animal Knowledge RAG Assistant.
-
-### Web Application Specifications & Architecture
-- **Framework & Version**: `streamlit==1.64.0`
-- **UI Entrypoint**: `app.py` with dependency-injectable `render_app(answer_fn=answer_with_citations)`.
-- **Form-Bound Invocation**: Single `st.form` submission executes `answer_with_citations` exactly once with fixed `top_k=4` and relative project index path `index`.
-- **Trusted Answer Boundary**: Renders `result["rendered_answer"]` exclusively using native Markdown with unsafe HTML disabled.
-- **Source Display & Grouping**: Groups identical source cards by `(filename, page_number, title, publisher, source_url)` while preserving first-appearance order and internal source/chunk IDs.
-- **Strict Link Validation**: Validates URLs via standard-library `urllib.parse.urlparse`. Only `http`/`https` links with valid netlocs render clickable button controls; invalid or non-web schemes display metadata without clickable links.
-- **Fail-Closed Error Safeguards**: Maps backend failures to public-safe messages without leaking secrets, process paths, tracebacks, or raw API payloads.
-- **Offline AppTest Suite**: 14 comprehensive AppTest tests (`tests/test_app.py`) verifying form submission, fixed `top_k=4` calls, supported output, fallback handling, grouping, URL validation, and secret sanitization without live API keys or FAISS index files.
-
-## Stage 12 — Deployment Overview
-
-Stage 12 packages the application and its verified runtime vector index artifacts for public cloud hosting on **Streamlit Community Cloud**.
-
-### Deployment Specifications & Runtime Artifact Policy
-- **Public Application URL**: https://animal-knowledge-rag-bpnfy8iqoxqrbcyeasica2.streamlit.app/
-- **Platform**: Streamlit Community Cloud (Python 3.13)
-- **Repository**: `DPmalaviya/animal-knowledge-rag` (Branch: `main`, Entrypoint: `app.py`)
-- **Root Secret Configuration**: `GEMINI_API_KEY` configured securely via platform secret interface (`st.secrets`). No `.env` files or API key input fields exist in code or repository.
-- **Tracked Runtime Index Policy**:
-  - `index/faiss.index` (835,629 bytes | SHA-256: `a5622eb106e81a4cc151d6ed33939239291f1da6df48329fc5ffa0a3b966038e`)
-  - `index/chunk_metadata.json` (604,932 bytes | SHA-256: `814cab2575bfe63060321faafc20f971dc11c6a7a59c18dbc75876275c617877`)
-  - `index/index_manifest.json` (495 bytes | SHA-256: `65ba5bc1a8d1a7bb700e0d614dceb98d9329c2ae5fbc904995a6f0cd3be507ef`)
-  - *All other generated files under `index/*` and `data/processed/*` (including `chunk_embeddings.json`) remain ignored by `.gitignore`.*
+---
 
 ## Running Execution and Tests
 
@@ -180,50 +138,29 @@ Install verified dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-*Pinned Dependencies:* `pymupdf==1.28.2`, `google-genai==2.26.0`, `numpy==2.4.3`, `faiss-cpu==1.15.1`, `streamlit==1.64.0`.
 
 ### 2. Run Automated Offline Test Suite
-Execute the full offline unit test suite covering Stages 4, 5, 6, 7, 8, 9, 10, and 11 (requires no network calls or API keys):
+Execute the full offline unit test suite covering Stages 4 through 11 (requires no network calls or API keys):
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* **188 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 24 Stage 8 retrieval, 20 Stage 9 generation, 58 Stage 10 citation offline tests, 14 Stage 11 web app tests).
+*Coverage:* **188 automated unit tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 24 Stage 8 retrieval, 20 Stage 9 generation, 58 Stage 10 citation tests, 14 Stage 11 web app tests).
 
-### 3. Launch Streamlit Web Application (Requires GEMINI_API_KEY)
-To run the web interface locally:
+### 3. Launch Streamlit Web Application Locally
+To run the web interface locally (requires `GEMINI_API_KEY` set in process environment and local `index/` directory):
 ```bash
 streamlit run app.py
 ```
-*Requirements:* Local index files (`index/`) and `GEMINI_API_KEY` set in process environment. `.env.example` is a template only; application code does not automatically load `.env`.
+*Note:* `.env.example` is a template only; application code reads `GEMINI_API_KEY` from process environment or Streamlit Cloud `st.secrets`.
 
-### 4. Run Stage 10 Citations & Grounding CLI (Requires GEMINI_API_KEY)
-To execute end-to-end RAG with filename and page citation rendering via CLI:
-```bash
-python -m src.citations --query "How does lead ammunition expose bald eagles to lead?" --top-k 4
-```
-
-## RAG Pipeline Architecture
-
-```
-Text-based PDFs (data/raw/)
-  → Stage 4: Page-Level Raw Text Extraction (PyMuPDF) (Completed)
-  → Stage 5: Light Text Normalization & Page-Bounded Chunking (Completed)
-  → Stage 6: Embeddings (Gemini Embedding 2, 768-dim) (Completed)
-  → Stage 7: Vector Storage (FAISS IndexFlatIP) (Completed)
-  → Stage 8: Retrieval System (Top-K Context) (Completed)
-  → Stage 9: Grounded RAG Generation (Gemini 3.8 Flash) (Completed)
-  → Stage 10: Citations & Grounding (Deterministic Resolution) (Completed)
-  → Stage 11: Web Application (Streamlit) (Completed)
-  → Stage 12: Deployment (Streamlit Community Cloud) (Awaiting CEO Review)
-  → Stage 13: Portfolio Integration (Planned)
-```
+---
 
 ## Project Structure
 
 ```
 animal-knowledge-rag/
 ├── app.py                  # Stage 11 Streamlit web application
-├── requirements.txt        # Verified project dependencies (pymupdf, google-genai, numpy, faiss-cpu, streamlit)
+├── requirements.txt        # Verified project dependencies
 ├── .env.example            # Environment variable template
 ├── .gitignore              # Git ignore rules
 ├── README.md               # Root documentation
@@ -236,13 +173,18 @@ animal-knowledge-rag/
 │   ├── retrieval.py        # Stage 8: Semantic Top-K document chunk retrieval
 │   ├── generation.py       # Stage 9: Gemini grounded RAG answer generation
 │   └── citations.py        # Stage 10: Source/page citation resolution
+├── docs/
+│   ├── portfolio-case-study.md # Detailed Stage 13 engineering case study
+│   └── portfolio-copy.md       # Reusable portfolio descriptions & resume bullets
 ├── data/
 │   ├── dataset_manifest.csv # Approved dataset manifest (9 PDFs / 85 pages)
-│   ├── README.md           # Dataset licensing, attribution, and provenance documentation
+│   ├── README.md           # Dataset licensing, attribution, and provenance
 │   ├── raw/                # Approved source PDF documents
 │   └── processed/          # Intermediate extracted data (gitignored)
 ├── index/                  # Tracked Stage 7 runtime FAISS artifacts for cloud deployment
-├── evaluation/             # Evaluation datasets (planned)
+│   ├── faiss.index
+│   ├── chunk_metadata.json
+│   └── index_manifest.json
 └── tests/
     ├── test_ingestion.py   # Stage 4 ingestion test suite
     ├── test_processing.py  # Stage 5 text processing test suite
@@ -255,16 +197,18 @@ animal-knowledge-rag/
     └── test_app.py         # Stage 11 Streamlit/AppTest suite
 ```
 
+---
+
+## Limitations
+
+- **Curated Corpus:** Small 9-document demo dataset (85 physical pages / 272 chunks).
+- **Text-Based PDFs Only:** No OCR processing for image-only PDFs.
+- **Single-Turn QA:** No conversational memory or multi-turn chat history.
+- **Fixed Retrieval Baseline:** Dense Top-4 retrieval without BM25 hybrid search or reranking.
+- **Syntactic Citation Verification:** Provenance checking verifies syntactic marker structure and metadata lookup; formal semantic entailment evaluation remains planned for Stage 14.
+
+---
 
 ## Data and Licensing Policy
 
 This repository uses strictly public-domain and open-access Creative Commons (CC-BY 4.0) animal research documents. Dataset provenance, licensing evidence, and redistribution terms are detailed in [data/README.md](data/README.md).
-
-## Secrets Policy
-
-- Real API keys and credentials must never be committed to this repository.
-- The `.env.example` file provides the template for required environment variables.
-
-## License
-
-See dataset details and licensing notes in `data/README.md`.
