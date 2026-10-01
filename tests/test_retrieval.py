@@ -378,6 +378,32 @@ class TestRetrievalSystem(unittest.TestCase):
         mock_sleep.assert_called_once_with(1.0)
 
     @patch("src.retrieval.time.sleep")
+    def test_20b_daily_quota_429_is_not_retried(self, mock_sleep):
+        """Prove an exhausted daily quota fails after one call without sleeping."""
+        mock_client = MagicMock()
+        daily_quota = errors.APIError(
+            429,
+            {
+                "error": {
+                    "message": (
+                        "Quota exceeded for limit "
+                        "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+                    ),
+                    "code": 429,
+                    "status": "RESOURCE_EXHAUSTED",
+                }
+            },
+        )
+        mock_client.models.embed_content.side_effect = daily_quota
+
+        with self.assertRaises(ValueError) as ctx:
+            embed_query(mock_client, "query text", max_retries=3, retry_delay=1.0)
+
+        self.assertEqual(mock_client.models.embed_content.call_count, 1)
+        mock_sleep.assert_not_called()
+        self.assertIn("daily quota", str(ctx.exception).lower())
+
+    @patch("src.retrieval.time.sleep")
     def test_21_retry_behavior_success_first_attempt(self, mock_sleep):
         """Prove successful first attempt causes exactly 1 API call and zero sleeps."""
         mock_client = MagicMock()

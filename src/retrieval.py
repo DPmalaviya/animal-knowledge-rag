@@ -28,6 +28,7 @@ from src.embeddings import (
     create_genai_client,
     validate_embedding_vector,
 )
+from src.provider_errors import is_daily_quota_error
 from src.vector_store import DEFAULT_INDEX_DIR, load_vector_store
 
 DEFAULT_TOP_K = 4
@@ -151,6 +152,9 @@ def embed_query(
             raise ve
         except Exception as e:
             last_error = e
+            if is_daily_quota_error(e):
+                raise ValueError(f"Daily quota exhausted embedding query: {e}") from e
+
             code = None
             if errors is not None and isinstance(e, errors.APIError):
                 code = getattr(e, "code", None)

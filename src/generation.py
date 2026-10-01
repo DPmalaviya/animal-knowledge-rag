@@ -19,6 +19,7 @@ except ImportError:
     errors = None  # type: ignore
 
 from src.embeddings import create_genai_client
+from src.provider_errors import is_daily_quota_error
 from src.retrieval import DEFAULT_TOP_K, prepare_query_text, retrieve
 
 DEFAULT_GENERATION_MODEL = "gemini-3.8-flash"
@@ -287,6 +288,9 @@ def generate_grounded_answer(
             raise ve
         except Exception as e:
             last_error = e
+            if is_daily_quota_error(e):
+                raise ValueError(f"Daily quota exhausted during generation: {e}") from e
+
             code = None
             if errors is not None and isinstance(e, errors.APIError):
                 code = getattr(e, "code", None)

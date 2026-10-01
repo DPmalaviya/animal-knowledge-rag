@@ -297,6 +297,32 @@ class TestGenerationSystem(unittest.TestCase):
         mock_sleep.assert_called_once_with(1.0)
 
     @patch("src.generation.time.sleep")
+    def test_16b_daily_quota_429_is_not_retried(self, mock_sleep):
+        """Test an exhausted daily quota fails after one call without sleeping."""
+        mock_client = MagicMock()
+        daily_quota = errors.APIError(
+            429,
+            {
+                "error": {
+                    "message": (
+                        "Quota exceeded for limit "
+                        "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+                    ),
+                    "code": 429,
+                    "status": "RESOURCE_EXHAUSTED",
+                }
+            },
+        )
+        mock_client.models.generate_content.side_effect = daily_quota
+
+        with self.assertRaises(ValueError) as ctx:
+            generate_grounded_answer(mock_client, "Prompt...", max_retries=3, retry_delay=1.0)
+
+        self.assertEqual(mock_client.models.generate_content.call_count, 1)
+        mock_sleep.assert_not_called()
+        self.assertIn("daily quota", str(ctx.exception).lower())
+
+    @patch("src.generation.time.sleep")
     def test_17_retry_behavior_repeated_failures_exhausted(self, mock_sleep):
         """Test repeated transient errors exhaust max_retries + 1 attempts and raise failure."""
         mock_client = MagicMock()
