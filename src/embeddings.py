@@ -13,12 +13,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
-    import dotenv
-    dotenv.load_dotenv()
-except ImportError:
-    pass
-
-try:
     from google import genai
     from google.genai import errors, types
 except ImportError:
@@ -79,7 +73,7 @@ def create_genai_client(api_key: Optional[str] = None) -> Any:
     if not key or not key.strip():
         raise ValueError(
             "GEMINI_API_KEY is not set. Please set the GEMINI_API_KEY environment variable "
-            "in your environment or local .env file before running live embeddings."
+            "in your process environment before running live embeddings."
         )
 
     return genai.Client(api_key=key.strip())
@@ -173,12 +167,18 @@ def embed_single_chunk(
                 config=config,
             )
 
-            if not hasattr(response, "embedding") or response.embedding is None:
-                raise ValueError("API response missing 'embedding' field.")
+            if not hasattr(response, "embeddings") or not response.embeddings:
+                raise ValueError("API response missing 'embeddings' field or embeddings list is empty.")
 
-            raw_values = getattr(response.embedding, "values", None)
+            if len(response.embeddings) != 1:
+                raise ValueError(
+                    f"API response returned {len(response.embeddings)} embeddings; expected exactly 1."
+                )
+
+            single_emb = response.embeddings[0]
+            raw_values = getattr(single_emb, "values", None)
             if raw_values is None:
-                raise ValueError("API response embedding missing 'values' field.")
+                raise ValueError("API response embedding object missing 'values' field.")
 
             validated_vector = validate_embedding_vector(raw_values, expected_dim=dimension)
 

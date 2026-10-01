@@ -11,7 +11,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 3 | Demo Dataset | ✅ CEO Approved | 9 PDFs / 85 physical pages with manifest metadata |
 | 4 | Document Ingestion | ✅ CEO Approved | Page-level raw text extraction & manifest validation |
 | 5 | Text Processing & Chunking | ✅ CEO Approved | Light text normalization & page-bounded paragraph chunking |
-| 6 | Embeddings | 🟡 Awaiting API Key / CEO Review | 768-dim vector generation via official Google Gen AI SDK |
+| 6 | Embeddings | 🟡 Code Corrected / Awaiting API Key | 768-dim vector generation via official Google Gen AI SDK (`response.embeddings`) |
 | 7 | Vector Storage | 🔲 Planned | FAISS vector index management |
 | 8 | Retrieval System | 🔲 Planned | Top-K context retrieval (initially K=4) |
 | 9 | RAG Generation | 🔲 Planned | Gemini answer generation with context |
@@ -21,7 +21,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), and embeddings module architecture (Stage 6) are fully implemented with **47 automated unit tests passing** (100% offline using mocks). End-to-end vector storage (FAISS), retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), and embeddings module architecture (Stage 6) are fully implemented with **50 automated unit tests passing** (100% offline using SDK response object types and mocks). End-to-end vector storage (FAISS), retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
 
 ## Stage 4 — Document Ingestion Overview
 
@@ -46,21 +46,24 @@ Stage 5 implements non-destructive text normalization and deterministic, page-bo
 
 Stage 6 implements 768-dimensional vector embedding generation using the official `google-genai` SDK and the `gemini-embedding-2` model (`src/embeddings.py`).
 
-### Embedding Specifications
+### Embedding Specifications & SDK Response Contract
 - **SDK**: `google-genai==2.26.0` (`from google import genai`, `from google.genai import types`)
 - **Model Identifier**: `gemini-embedding-2`
 - **Output Dimensionality**: 768 (`config=types.EmbedContentConfig(output_dimensionality=768)`)
+- **SDK Response Contract**: Reads the plural field `response.embeddings`, requires exactly one returned embedding object (`len(response.embeddings) == 1`), and validates `response.embeddings[0].values`. Zero embeddings or multiple embeddings are explicitly rejected.
 - **Document Input Format**: `title: {title} | text: {chunk_text}` (preserves original chunk text and metadata without injecting IDs or URLs into semantic input)
 - **Reserved Question Format (Stage 8)**: `task: question answering | query: {question}`
 - **Request Strategy**: One chunk per request (sequential execution with bounded retries and exponential backoff).
 - **Vector Integrity**: Verifies that returned vectors have length 768, contain 100% finite numeric floats, and have a non-zero L2 norm. Returned vectors are preserved as-is without re-normalization.
 
 ### Secure Environment Configuration
-Live API execution requires configuring the `GEMINI_API_KEY` environment variable:
+Live API execution reads `GEMINI_API_KEY` directly from the process environment:
 ```bash
 export GEMINI_API_KEY="your-api-key-here"
 ```
-Or set `GEMINI_API_KEY` in a local `.env` file (which is gitignored). If `GEMINI_API_KEY` is not set, the pipeline fails cleanly with:
+> **Important:** Creating a `.env` file does not automatically load it. `GEMINI_API_KEY` must be configured in the environment used to launch the command.
+
+If `GEMINI_API_KEY` is not set, the pipeline fails cleanly with:
 `ValueError: GEMINI_API_KEY is not set.`
 
 ## Running Execution and Tests
@@ -76,9 +79,9 @@ Execute the full offline unit test suite covering Stages 4, 5, and 6 (requires n
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* **47 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 16 Stage 6 embedding offline tests).
+*Coverage:* **50 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding offline tests using SDK response types).
 
-### 3. Run Live Embeddings Pipeline (Requires GEMINI_API_KEY)
+### 3. Run Live Embeddings Pipeline (Requires GEMINI_API_KEY in Process Environment)
 To run a 1-chunk smoke test:
 ```bash
 python -m src.embeddings --smoke

@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+from google.genai import types
+
 from src.embeddings import (
     DEFAULT_DIMENSION,
     DEFAULT_MODEL,
@@ -22,7 +24,7 @@ from src.embeddings import (
 
 
 class TestEmbeddings(unittest.TestCase):
-    """Offline unit tests for Stage 6 embedding module using mocks."""
+    """Offline unit tests for Stage 6 embedding module using SDK types and mocks."""
 
     def setUp(self):
         self.sample_chunk = {
@@ -40,6 +42,10 @@ class TestEmbeddings(unittest.TestCase):
         # Create a mock 768-dim vector normalized to length ~1.0
         val = 1.0 / math.sqrt(768)
         self.valid_vector = [val] * 768
+
+    def _make_sdk_response(self, vector):
+        emb = types.ContentEmbedding(values=vector)
+        return types.EmbedContentResponse(embeddings=[emb])
 
     def test_01_prepare_document_text_formatting(self):
         formatted = prepare_document_text(self.sample_chunk)
@@ -99,10 +105,9 @@ class TestEmbeddings(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_embedding_vector(vec_inf)
 
-    def test_10_embed_single_chunk_mock_success(self):
+    def test_10_embed_single_chunk_sdk_response_success(self):
         mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.embedding.values = self.valid_vector
+        mock_response = self._make_sdk_response(self.valid_vector)
         mock_client.models.embed_content.return_value = mock_response
 
         record = embed_single_chunk(mock_client, self.sample_chunk)
@@ -120,10 +125,42 @@ class TestEmbeddings(unittest.TestCase):
         self.assertEqual(record["embedding_dimension"], DEFAULT_DIMENSION)
         self.assertEqual(record["title"], self.sample_chunk["title"])
 
-    def test_11_input_records_not_mutated(self):
+    def test_11_zero_embeddings_rejected(self):
         mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.embedding.values = self.valid_vector
+        mock_response = types.EmbedContentResponse(embeddings=[])
+        mock_client.models.embed_content.return_value = mock_response
+
+        with patch("time.sleep"):
+            with self.assertRaises(ValueError) as ctx:
+                embed_single_chunk(mock_client, self.sample_chunk)
+        self.assertIn("missing 'embeddings' field or embeddings list is empty", str(ctx.exception))
+
+    def test_12_multiple_embeddings_rejected(self):
+        mock_client = MagicMock()
+        emb1 = types.ContentEmbedding(values=self.valid_vector)
+        emb2 = types.ContentEmbedding(values=self.valid_vector)
+        mock_response = types.EmbedContentResponse(embeddings=[emb1, emb2])
+        mock_client.models.embed_content.return_value = mock_response
+
+        with patch("time.sleep"):
+            with self.assertRaises(ValueError) as ctx:
+                embed_single_chunk(mock_client, self.sample_chunk)
+        self.assertIn("expected exactly 1", str(ctx.exception))
+
+    def test_13_missing_vector_values_rejected(self):
+        mock_client = MagicMock()
+        emb = types.ContentEmbedding(values=None)
+        mock_response = types.EmbedContentResponse(embeddings=[emb])
+        mock_client.models.embed_content.return_value = mock_response
+
+        with patch("time.sleep"):
+            with self.assertRaises(ValueError) as ctx:
+                embed_single_chunk(mock_client, self.sample_chunk)
+        self.assertIn("missing 'values' field", str(ctx.exception))
+
+    def test_14_input_records_not_mutated(self):
+        mock_client = MagicMock()
+        mock_response = self._make_sdk_response(self.valid_vector)
         mock_client.models.embed_content.return_value = mock_response
 
         chunk_copy = dict(self.sample_chunk)
@@ -133,7 +170,7 @@ class TestEmbeddings(unittest.TestCase):
         self.assertNotIn("embedding", chunk_copy)
         self.assertIn("embedding", record)
 
-    def test_12_non_transient_auth_error_fails_immediately(self):
+    def test_15_non_transient_auth_error_fails_immediately(self):
         mock_client = MagicMock()
         mock_client.models.embed_content.side_effect = Exception("API_KEY_INVALID: 401 Unauthorized")
 
@@ -141,14 +178,12 @@ class TestEmbeddings(unittest.TestCase):
             with self.assertRaises(ValueError) as ctx:
                 embed_single_chunk(mock_client, self.sample_chunk, max_retries=3)
 
-        # Non-transient errors should fail on first attempt
         self.assertEqual(mock_client.models.embed_content.call_count, 1)
         self.assertIn("authentication or permission error", str(ctx.exception))
 
-    def test_13_transient_error_retries_and_recovers(self):
+    def test_16_transient_error_retries_and_recovers(self):
         mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.embedding.values = self.valid_vector
+        mock_response = self._make_sdk_response(self.valid_vector)
 
         # Fail on attempt 1, succeed on attempt 2
         mock_client.models.embed_content.side_effect = [
@@ -163,7 +198,7 @@ class TestEmbeddings(unittest.TestCase):
         self.assertEqual(mock_sleep.call_count, 1)
         self.assertEqual(record["embedding"], self.valid_vector)
 
-    def test_14_duplicate_input_ids_rejected_before_network(self):
+    def test_17_duplicate_input_ids_rejected_before_network(self):
         chunks = [dict(self.sample_chunk), dict(self.sample_chunk)]
         mock_client = MagicMock()
 
@@ -173,7 +208,7 @@ class TestEmbeddings(unittest.TestCase):
         self.assertIn("Duplicate chunk_id", str(ctx.exception))
         mock_client.models.embed_content.assert_not_called()
 
-    def test_15_corpus_embedding_preserves_order_and_mapping(self):
+    def test_18_corpus_embedding_preserves_order_and_mapping(self):
         chunk1 = dict(self.sample_chunk, chunk_id="doc_a_p001_c001", text="Chunk A text")
         chunk2 = dict(self.sample_chunk, chunk_id="doc_b_p001_c001", text="Chunk B text")
 
@@ -181,10 +216,8 @@ class TestEmbeddings(unittest.TestCase):
         vec2 = [0.2] * 768
 
         mock_client = MagicMock()
-        mock_resp1 = MagicMock()
-        mock_resp1.embedding.values = vec1
-        mock_resp2 = MagicMock()
-        mock_resp2.embedding.values = vec2
+        mock_resp1 = self._make_sdk_response(vec1)
+        mock_resp2 = self._make_sdk_response(vec2)
 
         mock_client.models.embed_content.side_effect = [mock_resp1, mock_resp2]
 
@@ -196,7 +229,7 @@ class TestEmbeddings(unittest.TestCase):
         self.assertEqual(results[1]["chunk_id"], "doc_b_p001_c001")
         self.assertEqual(results[1]["embedding"], vec2)
 
-    def test_16_save_and_load_artifact(self):
+    def test_19_save_and_load_artifact(self):
         record = dict(self.sample_chunk, embedding=self.valid_vector, embedding_model=DEFAULT_MODEL, embedding_dimension=768)
         with tempfile.TemporaryDirectory() as tmp_dir:
             art_path = os.path.join(tmp_dir, "test_embeddings.json")
