@@ -438,6 +438,43 @@ class TestCitationsStage10(unittest.TestCase):
         )
         self.assertEqual(res["rendered_answer"], expected)
 
+    def test_ordinary_bracket_text_preservation(self) -> None:
+        """Verify ordinary bracket text like [CITES Appendix I] is preserved while valid citations resolve."""
+        raw = "Elephant species [Conservation status] are listed in [CITES Appendix I] and observed [see discussion above] [C1]."
+        rag_res = create_synthetic_rag_result(answer=raw)
+        res = resolve_rag_citations(rag_res)
+        expected = (
+            "Elephant species [Conservation status] are listed in [CITES Appendix I] "
+            "and observed [see discussion above] (bald_eagle_lead_exposure.pdf, p. 1)."
+        )
+        self.assertEqual(res["rendered_answer"], expected)
+        self.assertIn("[Conservation status]", res["rendered_answer"])
+        self.assertIn("[CITES Appendix I]", res["rendered_answer"])
+        self.assertIn("[see discussion above]", res["rendered_answer"])
+
+    def test_non_finite_similarity_score_nan_rejected(self) -> None:
+        """Verify NaN similarity score in source_map is rejected."""
+        rag_res = create_synthetic_rag_result()
+        rag_res["source_map"]["C2"]["similarity_score"] = float("nan")
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rag_citations(rag_res)
+        self.assertIn("non-finite", str(ctx.exception))
+
+    def test_non_finite_similarity_score_pos_inf_rejected(self) -> None:
+        """Verify +inf similarity score in source_map is rejected."""
+        rag_res = create_synthetic_rag_result()
+        rag_res["source_map"]["C2"]["similarity_score"] = float("inf")
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rag_citations(rag_res)
+        self.assertIn("non-finite", str(ctx.exception))
+
+    def test_non_finite_similarity_score_neg_inf_rejected(self) -> None:
+        """Verify -inf similarity score in source_map is rejected."""
+        rag_res = create_synthetic_rag_result()
+        rag_res["source_map"]["C2"]["similarity_score"] = float("-inf")
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rag_citations(rag_res)
+        self.assertIn("non-finite", str(ctx.exception))
 
 
 if __name__ == "__main__":

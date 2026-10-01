@@ -5,6 +5,7 @@ and user-facing filename/page rendering for grounded RAG answers.
 """
 
 import argparse
+import math
 import re
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -20,18 +21,6 @@ from src.generation import (
 # Matches optional internal whitespace around commas and inside brackets.
 VALID_CITATION_GROUP_PATTERN = re.compile(r"\[\s*C[1-9]\d*(?:\s*,\s*C[1-9]\d*)*\s*\]")
 
-# Regex pattern for scanning suspicious/malformed citation-like bracket expressions.
-# Targets bracketed strings that resemble controlled C-IDs (case variants, C0, punctuation errors, etc.)
-# but fail strict grammar validation.
-MALFORMED_CITATION_PATTERN = re.compile(
-    r"\[\s*(?:"
-    r"[cC]\d+|"  # Any c1, C0, C01, C1...
-    r"C\d+\s*[\s;,]\s*|"  # C1; C2, C1 C2, C1, etc.
-    r"[\s;,]\s*C\d+|"  # , C1, ; C1
-    r"C\d+.*?,.*?"  # Multiple elements with commas
-    r")\s*\]"
-)
-
 
 def validate_source_map(
     source_map: Dict[str, Dict[str, Any]],
@@ -44,7 +33,8 @@ def validate_source_map(
         retrieved_context_count: Expected context count matching len(source_map).
 
     Raises:
-        ValueError: If source_map is invalid, non-canonical, non-contiguous, or fails retrieval provenance.
+        ValueError: If source_map is invalid, non-canonical, non-contiguous, contains non-finite similarity scores,
+                    or fails retrieval provenance.
     """
     if not isinstance(source_map, dict) or not source_map:
         raise ValueError("source_map must be a non-empty dictionary.")
@@ -66,7 +56,7 @@ def validate_source_map(
             f"source_map keys must be canonical contiguous C1..C{k}, got {actual_keys}."
         )
 
-    # Validate provenance for each record in rank order
+    # Validate provenance and finite similarity scores for each record in rank order
     ordered_records = []
     for i in range(1, k + 1):
         source_id = f"C{i}"
@@ -76,6 +66,13 @@ def validate_source_map(
         rank = rec.get("rank")
         if rank != i:
             raise ValueError(f"Record for '{source_id}' has rank {rank}, expected {i}.")
+
+        score = rec.get("similarity_score")
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score):
+            raise ValueError(
+                f"Record for '{source_id}' has non-finite or invalid similarity_score '{score}'."
+            )
+
         ordered_records.append(rec)
 
     # Delegate 12-field provenance validation to generation module
@@ -115,7 +112,7 @@ def validate_rag_result(rag_result: Dict[str, Any]) -> None:
 
 
 def parse_citation_groups(answer: str) -> List[Tuple[int, int, str, List[str]]]:
-    """Parse valid controlled citation marker groups and detect malformed citation markers.
+    """Parse valid controlled citation marker groups and detect malformed numeric citation markers.
 
     Args:
         answer: Raw answer string from Stage 9 generation.
@@ -154,35 +151,21 @@ def parse_citation_groups(answer: str) -> List[Tuple[int, int, str, List[str]]]:
         valid_matches.append((start, end, raw_text, c_ids))
         valid_spans.add((start, end))
 
-    # Scan for malformed citation-like bracket markers not captured by valid_spans
-    for match in MALFORMED_CITATION_PATTERN.finditer(answer):
+    # Scan for malformed numeric C-ID citation attempts inside brackets [ ... ]
+    # Detects numeric citation attempts (containing c/C followed by digits) that fail strict grammar
+    # without treating ordinary C-prefixed text (e.g. [CITES Appendix I], [Conservation status]) as citations.
+    for match in re.finditer(r"\[([^\]]+)\]", answer):
         span = match.span()
         if span not in valid_spans:
-            # Verify if this match overlaps with any valid span
-            overlaps = any(
-                max(span[0], v_span[0]) < min(span[1], v_span[1])
-                for v_span in valid_spans
-            )
-            if not overlaps:
-                raise ValueError(
-                    f"Malformed controlled citation marker detected: '{match.group(0)}'."
-                )
-
-    # Additional check: scan for lowercase [c1] or ambiguous brackets like [C1; C2], [C1 C2]
-    # using a broad search for bracketed expressions starting with c/C
-    for match in re.finditer(r"\[\s*[cC].*?\]", answer):
-        span = match.span()
-        if span not in valid_spans:
-            overlaps = any(
-                max(span[0], v_span[0]) < min(span[1], v_span[1])
-                for v_span in valid_spans
-            )
-            if not overlaps:
+            inner_text = match.group(1).strip()
+            # If the bracket content contains numeric C-ID citation attempts (e.g. c1, C0, C01, C1; C2, C1 C2, C1,)
+            if re.search(r"\b[cC]\d+\b", inner_text) or re.search(r"[cC]\d+", inner_text):
                 raise ValueError(
                     f"Malformed controlled citation marker detected: '{match.group(0)}'."
                 )
 
     return valid_matches
+
 
 
 def validate_citation_groups(
