@@ -190,48 +190,66 @@ def chunk_processed_page(page_record: Dict[str, Any]) -> List[Dict[str, Any]]:
             f"No valid text blocks found for document '{doc_id}' page {page_num}."
         )
 
-    raw_chunks_text: List[str] = []
-    current_blocks: List[str] = []
-    current_tokens = 0
+    # Track distinct overlap_text and new source_text to prevent duplicate overlap on small-tail merges
+    raw_chunks_data: List[Dict[str, str]] = []
+    current_source_blocks: List[str] = []
+    current_source_tokens = 0
+    current_overlap_text = ""
 
     for block in atomic_blocks:
         block_tokens = estimate_tokens(block)
+        current_overlap_tokens = estimate_tokens(current_overlap_text)
 
-        # Check if adding this block exceeds target or hard max
-        if current_blocks and (current_tokens + block_tokens > TARGET_TOKENS or current_tokens + block_tokens > HARD_MAX_TOKENS):
-            # Finalize current chunk text
-            chunk_str = "\n\n".join(current_blocks)
-            raw_chunks_text.append(chunk_str)
+        total_if_added = current_overlap_tokens + current_source_tokens + block_tokens
+        if current_source_blocks and (total_if_added > TARGET_TOKENS or total_if_added > HARD_MAX_TOKENS):
+            source_str = "\n\n".join(current_source_blocks)
+            full_chunk_str = (current_overlap_text + "\n\n" + source_str).strip() if current_overlap_text else source_str
 
-            # Compute overlap from finalized chunk
-            overlap_str = _compute_overlap_text(chunk_str, OVERLAP_TOKENS)
+            raw_chunks_data.append({
+                "overlap_text": current_overlap_text,
+                "source_text": source_str,
+                "full_text": full_chunk_str,
+            })
 
-            if overlap_str and estimate_tokens(overlap_str + "\n\n" + block) <= HARD_MAX_TOKENS:
-                current_blocks = [overlap_str, block]
-                current_tokens = estimate_tokens(overlap_str) + block_tokens
+            new_overlap_str = _compute_overlap_text(full_chunk_str, OVERLAP_TOKENS)
+
+            if new_overlap_str and estimate_tokens(new_overlap_str + "\n\n" + block) <= HARD_MAX_TOKENS:
+                current_overlap_text = new_overlap_str
             else:
-                current_blocks = [block]
-                current_tokens = block_tokens
+                current_overlap_text = ""
+
+            current_source_blocks = [block]
+            current_source_tokens = block_tokens
         else:
-            current_blocks.append(block)
-            current_tokens += block_tokens
+            current_source_blocks.append(block)
+            current_source_tokens += block_tokens
 
-    if current_blocks:
-        raw_chunks_text.append("\n\n".join(current_blocks))
+    if current_source_blocks:
+        source_str = "\n\n".join(current_source_blocks)
+        full_chunk_str = (current_overlap_text + "\n\n" + source_str).strip() if current_overlap_text else source_str
+        raw_chunks_data.append({
+            "overlap_text": current_overlap_text,
+            "source_text": source_str,
+            "full_text": full_chunk_str,
+        })
 
-    # Small chunk merging within the same page
-    if len(raw_chunks_text) > 1:
-        last_chunk_tokens = estimate_tokens(raw_chunks_text[-1])
+    # Small chunk merging within the same page (prevents duplicate overlap)
+    if len(raw_chunks_data) > 1:
+        last_chunk_tokens = estimate_tokens(raw_chunks_data[-1]["full_text"])
         if last_chunk_tokens < SMALL_CHUNK_THRESHOLD:
-            prev_tokens = estimate_tokens(raw_chunks_text[-2])
-            merged_text = raw_chunks_text[-2] + "\n\n" + raw_chunks_text[-1]
-            if estimate_tokens(merged_text) <= HARD_MAX_TOKENS:
-                raw_chunks_text[-2] = merged_text
-                raw_chunks_text.pop()
+            prev_full_text = raw_chunks_data[-2]["full_text"]
+            last_source_text = raw_chunks_data[-1]["source_text"]
+            candidate_merged_full_text = prev_full_text + "\n\n" + last_source_text
+
+            if estimate_tokens(candidate_merged_full_text) <= HARD_MAX_TOKENS:
+                raw_chunks_data[-2]["source_text"] += "\n\n" + last_source_text
+                raw_chunks_data[-2]["full_text"] = candidate_merged_full_text
+                raw_chunks_data.pop()
 
     # Construct final chunk records
     chunk_records = []
-    for idx, c_text in enumerate(raw_chunks_text, start=1):
+    for idx, cdata in enumerate(raw_chunks_data, start=1):
+        c_text = cdata["full_text"]
         chunk_id = f"{doc_id}_p{page_num:03d}_c{idx:03d}"
         record = {
             "chunk_id": chunk_id,

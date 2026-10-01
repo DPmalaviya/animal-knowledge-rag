@@ -21,7 +21,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4) and text processing & chunking (Stage 5) are fully implemented with 100% automated test coverage. End-to-end vector embeddings, retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
+> **Note:** Document ingestion (Stage 4) and text processing & chunking (Stage 5) are fully implemented with **31 automated tests passing**. End-to-end vector embeddings, retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
 
 ## Stage 4 — Document Ingestion Overview
 
@@ -49,7 +49,7 @@ Stage 5 implements non-destructive text normalization and deterministic, page-bo
 - **Deterministic Token Estimation**: `estimate_tokens(text) = max(1, len(text) // 4)` (~4 characters per token).
 - **Target Size**: 450 estimated tokens (~1,800 characters).
 - **Hard Maximum**: 600 estimated tokens (~2,400 characters). Zero chunks exceed this maximum.
-- **Bounded Overlap**: Up to 75 tokens (~300 characters) of trailing sentences from the preceding chunk on the *same page* are prepended to the subsequent chunk. Every new chunk is guaranteed to advance source content.
+- **Bounded Overlap & Small-Tail Merging**: Up to 75 tokens (~300 characters) of trailing sentences from the preceding chunk on the *same page* are prepended to the subsequent chunk. Small trailing chunks (<100 tokens) are merged back into preceding chunks on the same page when total size <= 600 tokens; duplicate overlap is explicitly prevented during merges by concatenating only the trailing chunk's new source content.
 - **Oversized Paragraph/Sentence Fallback**: Paragraphs exceeding target sizes are split into sentences, and oversized sentences are split into word groups. Uninterrupted sequences (e.g. long URLs) are sliced at character thresholds to guarantee loop termination and size compliance.
 - **Deterministic Chunk IDs**: `{document_id}_p{page_number:03d}_c{chunk_index:03d}` (1-based chunk index per page).
 
@@ -88,7 +88,7 @@ python -m src.chunking
 - **Input Corpus:** 9 documents / 85 physical pages / 500,649 raw chars.
 - **Processed Page Text:** 373,278 characters (whitespace/padding collapsed without text loss).
 - **Total Chunks Generated:** **272 chunks** across 9 documents and 85 distinct source pages.
-- **Size Metrics:** Minimum: 62 tokens | Maximum: 573 tokens | Mean: 386.3 tokens | Median: 422.0 tokens.
+- **Size Metrics:** Minimum: 62 tokens | Maximum: 518 tokens | Mean: 385.2 tokens | Median: 422.0 tokens.
 - **Integrity:** 0 empty chunks, 0 duplicate IDs, 0 hard-maximum violations (>600 tokens).
 
 ### 4. Run Automated Test Suite
@@ -96,7 +96,7 @@ Execute the full `unittest` test suite covering Stages 4 and 5:
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* 29 automated tests verifying manifest loading, metadata preservation, unlisted file detection, 1-based page contiguity, text normalization, paragraph preservation, page-bounded chunking, overlap rules, fallback splitting, and deterministic chunk ID uniqueness.
+*Coverage:* **31 automated tests passing** verifying manifest loading, metadata preservation, unlisted file detection, 1-based page contiguity, text normalization, paragraph preservation, page-bounded chunking, overlap rules, small-tail merge overlap deduplication, fallback splitting, and deterministic chunk ID uniqueness.
 
 ## RAG Pipeline Architecture (Planned Workflow)
 
