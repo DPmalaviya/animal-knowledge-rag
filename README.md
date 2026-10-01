@@ -11,7 +11,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 3 | Demo Dataset | ✅ CEO Approved | 9 PDFs / 85 physical pages with manifest metadata |
 | 4 | Document Ingestion | ✅ CEO Approved | Page-level raw text extraction & manifest validation |
 | 5 | Text Processing & Chunking | ✅ CEO Approved | Light text normalization & page-bounded paragraph chunking |
-| 6 | Embeddings | 🟡 Code Corrected / Awaiting API Key | 768-dim vector generation via official Google Gen AI SDK (`response.embeddings`) |
+| 6 | Embeddings | 🟡 Live Validated / Awaiting CEO Approval | 768-dim vector generation via official Google Gen AI SDK (`response.embeddings`) |
 | 7 | Vector Storage | 🔲 Planned | FAISS vector index management |
 | 8 | Retrieval System | 🔲 Planned | Top-K context retrieval (initially K=4) |
 | 9 | RAG Generation | 🔲 Planned | Gemini answer generation with context |
@@ -21,7 +21,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), and embeddings module architecture (Stage 6) are fully implemented with **50 automated unit tests passing** (100% offline using SDK response object types and mocks). End-to-end vector storage (FAISS), retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), and embeddings (Stage 6) are fully implemented and live validated with **50 automated unit tests passing**. End-to-end vector storage (FAISS), retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
 
 ## Stage 4 — Document Ingestion Overview
 
@@ -55,6 +55,26 @@ Stage 6 implements 768-dimensional vector embedding generation using the officia
 - **Reserved Question Format (Stage 8)**: `task: question answering | query: {question}`
 - **Request Strategy**: One chunk per request (sequential execution with bounded retries and exponential backoff).
 - **Vector Integrity**: Verifies that returned vectors have length 768, contain 100% finite numeric floats, and have a non-zero L2 norm. Returned vectors are preserved as-is without re-normalization.
+
+### Live Validation & Execution Results
+- **Full Corpus Execution:** 272 / 272 chunks embedded successfully.
+- **Model Identifier:** `gemini-embedding-2`
+- **Output Dimensionality:** 768 dimensions per vector.
+- **Failed Chunks:** 0
+- **Missing, Extra, or Duplicate IDs:** 0
+- **Text & Metadata Preservation:** Exact preservation of original text, titles, document IDs, page numbers, and filenames.
+- **Generated Artifact:** Saved atomically to `data/processed/chunk_embeddings.json` (4.46 MB, validated, and kept gitignored / outside Git).
+- **Automated Test Suite:** 50 automated tests passing, as recorded in the accepted evidence.
+
+#### Measured L2 Norm Statistics
+- **Minimum L2 Norm:** `0.999999105449`
+- **Mean L2 Norm:** `0.999999996118`
+- **Maximum L2 Norm:** `1.000000603547`
+
+#### Runtime & Rate Limit Pacing Performance
+- **Configured Inter-Request Pacing:** 4.2 seconds delay between sequential requests (14.28 RPM) to adhere strictly to the Gemini API Free Tier 15 RPM rate limit.
+- **Theoretical Pacing-Only Delay:** 271 × 4.2 seconds = 1,138.2 seconds, approximately 19 minutes.
+- **Observed End-to-End Runtime:** Approximately 24 minutes, based on the recorded execution evidence.
 
 ### Secure Environment Configuration
 Live API execution reads `GEMINI_API_KEY` directly from the process environment:
@@ -102,7 +122,7 @@ python -m src.embeddings
 Text-based PDFs (data/raw/)
   → Stage 4: Page-Level Raw Text Extraction (PyMuPDF) (Completed)
   → Stage 5: Light Text Normalization & Page-Bounded Chunking (Completed)
-  → Stage 6: Embeddings (Gemini Embedding 2, 768-dim) (Implemented / Awaiting Key)
+  → Stage 6: Embeddings (Gemini Embedding 2, 768-dim) (Live Validated / Awaiting CEO Approval)
   → Stage 7: Vector Storage (FAISS Index) (Planned)
   → Stage 8: Retrieval System (Top-K Context) (Planned)
   → Stage 9: RAG Generation (Gemini LLM) (Planned)
