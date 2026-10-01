@@ -21,7 +21,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), and vector storage (Stage 7) are fully implemented and live validated with **66 automated unit tests passing**. End-to-end retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), and vector storage (Stage 7) are fully implemented and live validated with **72 automated unit tests passing**. End-to-end retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
 
 ## Stage 4 — Document Ingestion Overview
 
@@ -110,7 +110,7 @@ Execute the full offline unit test suite covering Stages 4, 5, 6, and 7 (require
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* **66 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 16 Stage 7 vector store offline tests).
+*Coverage:* **72 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store offline tests).
 
 ### 3. Run Stage 7 Vector Storage CLI (100% Offline)
 To build, persist, and verify the 272-chunk FAISS vector store:

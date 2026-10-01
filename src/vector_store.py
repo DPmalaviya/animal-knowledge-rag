@@ -20,6 +20,38 @@ DEFAULT_MODEL = "gemini-embedding-2"
 DEFAULT_DIMENSION = 768
 EXPECTED_CORPUS_COUNT = 272
 
+REQUIRED_PROVENANCE_FIELDS = [
+    "chunk_id",
+    "document_id",
+    "filename",
+    "page_number",
+    "chunk_index",
+    "text",
+    "title",
+    "publisher",
+    "source_url",
+    "estimated_token_count",
+    "embedding_model",
+    "embedding_dimension",
+    "embedding",
+]
+
+REQUIRED_STRING_PROVENANCE_FIELDS = [
+    "chunk_id",
+    "document_id",
+    "filename",
+    "text",
+    "title",
+    "publisher",
+    "source_url",
+]
+
+REQUIRED_INT_PROVENANCE_FIELDS = [
+    "page_number",
+    "chunk_index",
+    "estimated_token_count",
+]
+
 
 def compute_file_sha256(file_path: str) -> str:
     """Compute SHA-256 checksum of a file.
@@ -61,6 +93,8 @@ def validate_embedding_records(
 ) -> None:
     """Validate embedding records collection prior to matrix conversion.
 
+    Enforces strict Stage 6 source metadata and vector provenance contracts.
+
     Args:
         records: List of chunk embedding record dictionaries.
         expected_count: Optional exact record count requirement (e.g. 272 for production).
@@ -83,21 +117,47 @@ def validate_embedding_records(
         if not isinstance(record, dict):
             raise ValueError(f"Record at index {idx} is not a dictionary.")
 
-        chunk_id = record.get("chunk_id")
-        if not chunk_id or not isinstance(chunk_id, str):
-            raise ValueError(f"Record at index {idx} missing valid non-empty 'chunk_id'.")
+        # Require all Stage 6 fields present
+        for field in REQUIRED_PROVENANCE_FIELDS:
+            if field not in record:
+                raise ValueError(
+                    f"Record at index {idx} missing required Stage 6 provenance field '{field}'."
+                )
 
+        # Validate non-empty string fields
+        for field in REQUIRED_STRING_PROVENANCE_FIELDS:
+            val = record[field]
+            if not isinstance(val, str) or not val.strip():
+                raise ValueError(
+                    f"Record at index {idx} field '{field}' must be a non-empty string."
+                )
+
+        # Validate positive integer fields
+        for field in REQUIRED_INT_PROVENANCE_FIELDS:
+            val = record[field]
+            if isinstance(val, bool) or not isinstance(val, int) or val < 1:
+                raise ValueError(
+                    f"Record at index {idx} field '{field}' must be a positive integer (got {val})."
+                )
+
+        chunk_id = record["chunk_id"]
         if chunk_id in seen_ids:
             raise ValueError(f"Duplicate chunk_id found in input collection: '{chunk_id}'")
         seen_ids.add(chunk_id)
 
-        model = record.get("embedding_model", expected_model)
+        model = record["embedding_model"]
         if model != expected_model:
             raise ValueError(
                 f"Record '{chunk_id}' model mismatch: expected '{expected_model}', got '{model}'"
             )
 
-        vector = record.get("embedding")
+        dim = record["embedding_dimension"]
+        if isinstance(dim, bool) or not isinstance(dim, int) or dim != expected_dim:
+            raise ValueError(
+                f"Record '{chunk_id}' embedding_dimension mismatch: expected {expected_dim}, got {dim}"
+            )
+
+        vector = record["embedding"]
         if not isinstance(vector, (list, tuple)):
             raise ValueError(f"Record '{chunk_id}' embedding field must be a list/tuple.")
 
@@ -234,6 +294,8 @@ def build_faiss_index(matrix: np.ndarray) -> faiss.IndexFlatIP:
 def build_metadata_mapping(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Build exact 0-indexed integer ID to chunk metadata mapping.
 
+    Enforces direct field copying without default fallbacks to preserve strict provenance.
+
     Args:
         records: List of chunk embedding record dictionaries.
 
@@ -243,32 +305,25 @@ def build_metadata_mapping(records: List[Dict[str, Any]]) -> List[Dict[str, Any]
     Raises:
         ValueError: If validation of records or metadata fields fails.
     """
+    validate_embedding_records(records)
     metadata_list = []
-    seen_ids = set()
 
     for i, r in enumerate(records):
-        cid = r.get("chunk_id")
-        if not cid:
-            raise ValueError(f"Record at position {i} missing chunk_id.")
-        if cid in seen_ids:
-            raise ValueError(f"Duplicate chunk_id in metadata mapping: '{cid}'")
-        seen_ids.add(cid)
-
-        # Exclude full vector from metadata JSON to avoid duplication
+        # Exclude full vector array from metadata JSON to prevent redundant storage
         meta_entry = {
             "faiss_id": i,
             "chunk_id": r["chunk_id"],
-            "document_id": r.get("document_id", ""),
-            "filename": r.get("filename", ""),
-            "page_number": r.get("page_number", 1),
-            "chunk_index": r.get("chunk_index", 1),
-            "text": r.get("text", ""),
-            "title": r.get("title", ""),
-            "publisher": r.get("publisher", ""),
-            "source_url": r.get("source_url", ""),
-            "estimated_token_count": r.get("estimated_token_count", 0),
-            "embedding_model": r.get("embedding_model", DEFAULT_MODEL),
-            "embedding_dimension": r.get("embedding_dimension", DEFAULT_DIMENSION),
+            "document_id": r["document_id"],
+            "filename": r["filename"],
+            "page_number": r["page_number"],
+            "chunk_index": r["chunk_index"],
+            "text": r["text"],
+            "title": r["title"],
+            "publisher": r["publisher"],
+            "source_url": r["source_url"],
+            "estimated_token_count": r["estimated_token_count"],
+            "embedding_model": r["embedding_model"],
+            "embedding_dimension": r["embedding_dimension"],
         }
         metadata_list.append(meta_entry)
 
@@ -400,15 +455,34 @@ def load_vector_store(
             f"Metadata checksum mismatch: expected {manifest.get('chunk_metadata_sha256')}, got {actual_meta_sha}"
         )
 
-    # 2. Verify manifest contract
+    # 2. Load metadata first to allow manifest metadata_count validation
+    with open(meta_path, "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+
+    if not isinstance(metadata, list):
+        raise ValueError("Loaded chunk metadata is not a list.")
+
+    # 3. Verify manifest fields explicitly
     if manifest.get("index_type") != "IndexFlatIP":
         raise ValueError(f"Unsupported index_type in manifest: {manifest.get('index_type')}")
     if manifest.get("metric_type") != "METRIC_INNER_PRODUCT":
         raise ValueError(f"Unsupported metric_type in manifest: {manifest.get('metric_type')}")
     if manifest.get("dimension") != DEFAULT_DIMENSION:
         raise ValueError(f"Unsupported dimension in manifest: {manifest.get('dimension')}")
+    if manifest.get("metadata_count") != len(metadata):
+        raise ValueError(
+            f"Manifest metadata_count ({manifest.get('metadata_count')}) does not match loaded metadata length ({len(metadata)})."
+        )
+    if manifest.get("embedding_model") != DEFAULT_MODEL:
+        raise ValueError(
+            f"Manifest embedding_model mismatch: expected '{DEFAULT_MODEL}', got '{manifest.get('embedding_model')}'"
+        )
+    if not isinstance(manifest.get("is_normalized"), bool) or manifest.get("is_normalized") is not True:
+        raise ValueError(
+            f"Manifest is_normalized flag must be boolean True, got {manifest.get('is_normalized')}"
+        )
 
-    # 3. Load and validate FAISS index
+    # 4. Load and validate FAISS index
     index = faiss.read_index(str(index_path))
     if index.d != DEFAULT_DIMENSION:
         raise ValueError(f"Loaded FAISS index dimension mismatch: expected {DEFAULT_DIMENSION}, got {index.d}")
@@ -416,21 +490,14 @@ def load_vector_store(
         raise ValueError(
             f"Loaded FAISS index vector count mismatch: expected {manifest.get('vector_count')}, got {index.ntotal}"
         )
+    if index.ntotal != len(metadata):
+        raise ValueError(
+            f"FAISS index vector count ({index.ntotal}) does not match metadata length ({len(metadata)})."
+        )
     if index.metric_type != faiss.METRIC_INNER_PRODUCT:
         raise ValueError("Loaded FAISS index metric_type is not METRIC_INNER_PRODUCT.")
 
-    # 4. Load and validate metadata
-    with open(meta_path, "r", encoding="utf-8") as f:
-        metadata = json.load(f)
-
-    if not isinstance(metadata, list):
-        raise ValueError("Loaded chunk metadata is not a list.")
-
-    if len(metadata) != index.ntotal:
-        raise ValueError(
-            f"Metadata length ({len(metadata)}) does not match FAISS index vector count ({index.ntotal})."
-        )
-
+    # 5. Validate metadata entries and provenance fields
     seen_ids = set()
     chunk_ids = []
 
@@ -440,20 +507,23 @@ def load_vector_store(
         if meta.get("faiss_id") != i:
             raise ValueError(f"Metadata item at index {i} has invalid faiss_id: {meta.get('faiss_id')}")
 
-        cid = meta.get("chunk_id")
-        if not cid or not isinstance(cid, str):
-            raise ValueError(f"Metadata item at index {i} missing valid chunk_id.")
+        for str_field in REQUIRED_STRING_PROVENANCE_FIELDS:
+            val = meta.get(str_field)
+            if not isinstance(val, str) or not val.strip():
+                raise ValueError(f"Metadata item at index {i} field '{str_field}' must be a non-empty string.")
+
+        for int_field in REQUIRED_INT_PROVENANCE_FIELDS:
+            val = meta.get(int_field)
+            if isinstance(val, bool) or not isinstance(val, int) or val < 1:
+                raise ValueError(f"Metadata item at index {i} field '{int_field}' must be a positive integer.")
+
+        cid = meta["chunk_id"]
         if cid in seen_ids:
             raise ValueError(f"Duplicate chunk_id in metadata: '{cid}'")
         seen_ids.add(cid)
         chunk_ids.append(cid)
 
-        # Require key metadata fields
-        for field in ["document_id", "filename", "page_number", "text", "title"]:
-            if field not in meta:
-                raise ValueError(f"Metadata record '{cid}' missing required field: '{field}'")
-
-    # 5. Verify ordered chunk IDs fingerprint
+    # 6. Verify ordered chunk IDs fingerprint
     ids_fingerprint = compute_chunk_ids_fingerprint(chunk_ids)
     if ids_fingerprint != manifest.get("ordered_chunk_ids_sha256"):
         raise ValueError(

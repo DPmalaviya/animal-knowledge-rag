@@ -17,6 +17,7 @@ import numpy as np
 from src.vector_store import (
     DEFAULT_DIMENSION,
     DEFAULT_MODEL,
+    REQUIRED_PROVENANCE_FIELDS,
     build_embeddings_matrix,
     build_faiss_index,
     build_metadata_mapping,
@@ -168,6 +169,10 @@ class TestVectorStore(unittest.TestCase):
             self.assertEqual(meta["faiss_id"], i)
             self.assertEqual(meta["chunk_id"], self.records[i]["chunk_id"])
             self.assertEqual(meta["text"], self.records[i]["text"])
+            self.assertEqual(meta["document_id"], self.records[i]["document_id"])
+            self.assertEqual(meta["filename"], self.records[i]["filename"])
+            self.assertEqual(meta["page_number"], self.records[i]["page_number"])
+            self.assertEqual(meta["title"], self.records[i]["title"])
             self.assertNotIn("embedding", meta)  # Full embedding vector excluded
 
     def test_12_save_and_load_vector_store_round_trip(self):
@@ -279,6 +284,100 @@ class TestVectorStore(unittest.TestCase):
         finally:
             if env_key:
                 os.environ["GEMINI_API_KEY"] = env_key
+
+    def test_17_provenance_validation_missing_field(self):
+        """Test that records missing any required Stage 6 provenance field are rejected."""
+        for field in REQUIRED_PROVENANCE_FIELDS:
+            bad_records = [dict(r) for r in self.records]
+            del bad_records[0][field]
+            with self.assertRaises(ValueError) as ctx:
+                validate_embedding_records(bad_records)
+            self.assertIn("missing required stage 6 provenance field", str(ctx.exception).lower())
+
+    def test_18_provenance_validation_empty_string(self):
+        """Test that records with empty or whitespace-only string metadata fields are rejected."""
+        string_fields = ["document_id", "filename", "text", "title", "publisher", "source_url"]
+        for field in string_fields:
+            bad_records = [dict(r) for r in self.records]
+            bad_records[0][field] = "   "
+            with self.assertRaises(ValueError) as ctx:
+                validate_embedding_records(bad_records)
+            self.assertIn("non-empty string", str(ctx.exception).lower())
+
+    def test_19_provenance_validation_invalid_int(self):
+        """Test that records with non-positive or boolean integer fields are rejected."""
+        int_fields = ["page_number", "chunk_index", "estimated_token_count"]
+        for field in int_fields:
+            # Case A: Non-positive int
+            bad_records = [dict(r) for r in self.records]
+            bad_records[0][field] = 0
+            with self.assertRaises(ValueError) as ctx:
+                validate_embedding_records(bad_records)
+            self.assertIn("positive integer", str(ctx.exception).lower())
+
+            # Case B: Boolean instead of int
+            bad_records = [dict(r) for r in self.records]
+            bad_records[0][field] = True
+            with self.assertRaises(ValueError) as ctx:
+                validate_embedding_records(bad_records)
+            self.assertIn("positive integer", str(ctx.exception).lower())
+
+    def test_20_manifest_validation_metadata_count_mismatch(self):
+        """Test that load_vector_store rejects manifest where metadata_count != len(metadata)."""
+        matrix, _ = build_embeddings_matrix(self.records)
+        index = build_faiss_index(matrix)
+        metadata = build_metadata_mapping(self.records)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_vector_store(index, metadata, index_dir=tmpdir)
+            manifest_path = os.path.join(tmpdir, "index_manifest.json")
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                man = json.load(f)
+            man["metadata_count"] = 999
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(man, f)
+
+            with self.assertRaises(ValueError) as ctx:
+                load_vector_store(index_dir=tmpdir)
+            self.assertIn("metadata_count", str(ctx.exception).lower())
+
+    def test_21_manifest_validation_wrong_model(self):
+        """Test that load_vector_store rejects manifest with incorrect embedding_model."""
+        matrix, _ = build_embeddings_matrix(self.records)
+        index = build_faiss_index(matrix)
+        metadata = build_metadata_mapping(self.records)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_vector_store(index, metadata, index_dir=tmpdir)
+            manifest_path = os.path.join(tmpdir, "index_manifest.json")
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                man = json.load(f)
+            man["embedding_model"] = "wrong-model-v1"
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(man, f)
+
+            with self.assertRaises(ValueError) as ctx:
+                load_vector_store(index_dir=tmpdir)
+            self.assertIn("embedding_model mismatch", str(ctx.exception).lower())
+
+    def test_22_manifest_validation_is_normalized_not_true(self):
+        """Test that load_vector_store rejects manifest where is_normalized is False or missing."""
+        matrix, _ = build_embeddings_matrix(self.records)
+        index = build_faiss_index(matrix)
+        metadata = build_metadata_mapping(self.records)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_vector_store(index, metadata, index_dir=tmpdir)
+            manifest_path = os.path.join(tmpdir, "index_manifest.json")
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                man = json.load(f)
+            man["is_normalized"] = False
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(man, f)
+
+            with self.assertRaises(ValueError) as ctx:
+                load_vector_store(index_dir=tmpdir)
+            self.assertIn("is_normalized flag must be boolean true", str(ctx.exception).lower())
 
 
 if __name__ == "__main__":
