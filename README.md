@@ -27,10 +27,10 @@ An end-to-end Retrieval-Augmented Generation (RAG) system built to answer animal
 | 10 | Citations & Grounding | ✅ CEO Approved | Source/page citation resolution & fail-closed validation |
 | 11 | Web Application | ✅ CEO Approved | Streamlit web interface for grounded QA with safe citations |
 | 12 | Deployment | ✅ CEO Approved | Streamlit Community Cloud public deployment & verification |
-| 13 | Portfolio Integration | 🟡 Needs CEO Review | Case study, portfolio copy, and documentation refactoring |
-| 14 | Evaluation & Technical Interview Prep | 🔲 Planned | Stage 14 will address formal retrieval and answer evaluation and technical interview preparation; its evaluation design remains to be approved. |
+| 13 | Portfolio Integration | ✅ CEO Approved | Case study, portfolio copy, and documentation refactoring |
+| 14 | Evaluation & Technical Interview Prep | 🟡 In Progress | CEO-authorized evaluation framework, retrieval metrics, & interview prep |
 
-> **Note:** Stages 1 through 12 are fully implemented and CEO-approved. Stage 13 portfolio documentation is complete and awaiting final CEO review with **188 automated unit tests passing**. Stage 14 will address formal retrieval and answer evaluation and technical interview preparation; its evaluation design remains to be approved.
+> **Note:** Stages 1 through 13 are fully implemented and CEO-approved with **188 automated unit tests passing**. Stage 14 — Evaluation & Technical Interview Preparation is now CEO-authorized and in progress.
 
 ---
 
