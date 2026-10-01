@@ -14,14 +14,14 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 6 | Embeddings | ✅ CEO Approved | 768-dim vector generation via official Google Gen AI SDK (272 chunks embedded) |
 | 7 | Vector Storage | ✅ CEO Approved | FAISS IndexFlatIP 768-dim vector index & metadata mapping |
 | 8 | Retrieval System | 🟡 Needs CEO Review | Semantic Top-K context retrieval (K=4) with bounded retries & compatibility checks |
-| 9 | RAG Generation | 🔲 Planned | Gemini answer generation with context |
+| 9 | RAG Generation | 🟡 Needs CEO Review | Grounded answer generation via gemini-3.8-flash & controlled C1..CK source IDs |
 | 10 | Citations & Grounding | 🔲 Planned | Source/page citation resolution |
 | 11 | Web Application | 🔲 Planned | Streamlit web interface |
 | 12 | Deployment | 🔲 Planned | Streamlit Community Cloud deployment |
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), and retrieval system (Stage 8) are fully implemented and verified with **96 automated unit tests passing**. End-to-end RAG generation (Stage 9), citations, and Streamlit UI remain planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), retrieval system (Stage 8), and grounded RAG generation (Stage 9) are fully implemented and verified with **116 automated unit tests passing**. Final citation resolution (Stage 10) and Streamlit UI remain planned for future stages.
 
 ## Stage 4 — Document Ingestion Overview
 
@@ -112,6 +112,21 @@ Stage 8 implements semantic Top-K document chunk retrieval using Gemini query em
 - **Sanity Set Scope & Retrieval Results**: Evaluated on an 8-question, hand-selected cross-corpus sanity set covering 8 target source documents across the approved 9-document corpus. The Monarch Butterfly factsheet (`monarch_butterfly_factsheet.pdf`) was not a dedicated expected source in this set. Achieving 8/8 describes expected-source presence for these hand-selected questions; it is not a general retrieval-accuracy measurement. Source-file presence alone does not establish that every returned chunk supports an answer.
 - **Baseline Preservation**: Reranking remains deferred. The dense Top-K retrieval baseline is preserved as-is.
 
+## Stage 9 — RAG Generation Overview
+
+Stage 9 implements grounded answer generation using the Gemini 3.8 Flash model, trusted system instructions, controlled `C1..CK` source identifiers, and Stage 8 retrieval context (`src/generation.py`).
+
+### Generation Specifications & Architecture
+- **Generation Model**: `gemini-3.8-flash` via official `google-genai` SDK (`client.models.generate_content`).
+- **Thinking Level**: Configured to `low` (`types.ThinkingConfig(thinking_level="low")`) to reduce latency and reasoning overhead.
+- **Generation Hyperparameters**: Temperature, `top_p`, and `top_k` remain un-overridden (using Gemini 3.x default parameters).
+- **Prohibition of External Knowledge & Tools**: No external tools (`google_search`, `url_context`, `code_execution`, `file_search`) are enabled. Generation is strictly grounded in local retrieved context.
+- **Trusted System Instruction**: Explicitly treats source context as untrusted data blocks (`[C1]...[/C1]`), prohibiting prompt-injection overrides and constraining answers to retrieved facts.
+- **Controlled Source Identifiers**: Maps Stage 8 retrieval rank order deterministically to controlled generation source IDs (`C1`, `C2`, `C3`, `C4`).
+- **Exact Grounded Fallback Sentence**: If retrieved context is insufficient, the system emits:
+  `"I don't have enough information in the provided sources to answer that question."`
+- **Citation Rendering Boundary**: Raw `[C1]` markers and `source_map` records are returned as-is. Final citation parsing, validation, and filename/page rendering remain deferred to Stage 10 (`src/citations.py`).
+
 ## Running Execution and Tests
 
 ### 1. Installation
@@ -122,20 +137,26 @@ pip install -r requirements.txt
 *Pinned Dependencies:* `pymupdf==1.28.2`, `google-genai==2.26.0`, `numpy==2.4.3`, `faiss-cpu==1.15.1`.
 
 ### 2. Run Automated Offline Test Suite
-Execute the full offline unit test suite covering Stages 4, 5, 6, 7, and 8 (requires no network calls or API keys):
+Execute the full offline unit test suite covering Stages 4, 5, 6, 7, 8, and 9 (requires no network calls or API keys):
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* **96 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 24 Stage 8 retrieval offline tests).
+*Coverage:* **116 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 24 Stage 8 retrieval, 20 Stage 9 generation offline tests).
 
-### 3. Run Stage 8 Retrieval CLI (Requires GEMINI_API_KEY in Process Environment)
+### 3. Run Stage 8 Retrieval CLI (Requires GEMINI_API_KEY)
 To execute live Top-K semantic retrieval for a user question:
 ```bash
 python -m src.retrieval --query "How long do bald eagle eggs take to hatch?" --top-k 4
 ```
-*Requirement:* Existing Stage 7 index artifacts (`index/`) and `GEMINI_API_KEY` configured in process environment.
 
-## RAG Pipeline Architecture (Planned Workflow)
+### 4. Run Stage 9 Grounded RAG Generation CLI (Requires GEMINI_API_KEY)
+To execute end-to-end retrieval and grounded answer generation:
+```bash
+python -m src.generation --query "How does lead ammunition expose bald eagles to lead?" --top-k 4
+```
+*Requirement:* Existing Stage 7 index artifacts (`index/`) and `GEMINI_API_KEY` configured in process environment or `.env`.
+
+## RAG Pipeline Architecture
 
 ```
 Text-based PDFs (data/raw/)
@@ -143,8 +164,8 @@ Text-based PDFs (data/raw/)
   → Stage 5: Light Text Normalization & Page-Bounded Chunking (Completed)
   → Stage 6: Embeddings (Gemini Embedding 2, 768-dim) (Completed)
   → Stage 7: Vector Storage (FAISS IndexFlatIP) (Completed)
-  → Stage 8: Retrieval System (Top-K Context) (Live Validated / Awaiting CEO Approval)
-  → Stage 9: RAG Generation (Gemini LLM) (Planned)
+  → Stage 8: Retrieval System (Top-K Context) (Completed)
+  → Stage 9: Grounded RAG Generation (Gemini 3.8 Flash) (Awaiting CEO Review)
   → Stage 10: Citations & Grounding (Planned)
   → Stage 11: Web Application (Streamlit) (Planned)
 ```
@@ -165,7 +186,7 @@ animal-knowledge-rag/
 │   ├── embeddings.py       # Stage 6: 768-dim Gemini chunk embeddings
 │   ├── vector_store.py     # Stage 7: FAISS IndexFlatIP index & metadata storage
 │   ├── retrieval.py        # Stage 8: Semantic Top-K document chunk retrieval
-│   ├── generation.py       # Stage 9: Gemini answer generation (planned)
+│   ├── generation.py       # Stage 9: Gemini grounded RAG answer generation
 │   └── citations.py        # Stage 10: Source/page citation resolution (planned)
 ├── data/
 │   ├── dataset_manifest.csv # Approved dataset manifest (9 PDFs / 85 pages)
@@ -180,7 +201,8 @@ animal-knowledge-rag/
     ├── test_chunking.py    # Stage 5 chunking test suite
     ├── test_embeddings.py  # Stage 6 embedding offline test suite
     ├── test_vector_store.py# Stage 7 vector storage test suite
-    └── test_retrieval.py   # Stage 8 retrieval test suite
+    ├── test_retrieval.py   # Stage 8 retrieval test suite
+    └── test_generation.py  # Stage 9 generation offline test suite
 ```
 
 ## Data and Licensing Policy
