@@ -133,6 +133,19 @@ def render_app(answer_fn: Callable[..., Dict[str, Any]] = answer_with_citations)
     Args:
         answer_fn: Injectable backend function for RAG execution (defaults to production answer_with_citations).
     """
+    # Check Streamlit Cloud st.secrets for GEMINI_API_KEY if process env is unset
+    api_key = None
+    if "GEMINI_API_KEY" in os.environ and os.environ["GEMINI_API_KEY"].strip():
+        api_key = os.environ["GEMINI_API_KEY"].strip()
+    else:
+        try:
+            if "GEMINI_API_KEY" in st.secrets:
+                sec_val = st.secrets["GEMINI_API_KEY"]
+                if isinstance(sec_val, str) and sec_val.strip():
+                    api_key = sec_val.strip()
+                    os.environ["GEMINI_API_KEY"] = api_key
+        except Exception:
+            pass
     st.set_page_config(
         page_title="Animal Knowledge RAG Assistant",
         page_icon="🐾",
