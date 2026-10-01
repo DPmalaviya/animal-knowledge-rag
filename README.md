@@ -12,8 +12,8 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 4 | Document Ingestion | ✅ CEO Approved | Page-level raw text extraction & manifest validation |
 | 5 | Text Processing & Chunking | ✅ CEO Approved | Light text normalization & page-bounded paragraph chunking |
 | 6 | Embeddings | ✅ CEO Approved | 768-dim vector generation via official Google Gen AI SDK (272 chunks embedded) |
-| 7 | Vector Storage | 🟡 Live Validated / Awaiting CEO Approval | FAISS IndexFlatIP 768-dim vector index & metadata mapping |
-| 8 | Retrieval System | 🔲 Planned | Top-K context retrieval (initially K=4) |
+| 7 | Vector Storage | ✅ CEO Approved | FAISS IndexFlatIP 768-dim vector index & metadata mapping |
+| 8 | Retrieval System | 🟡 Live Validated / Awaiting CEO Approval | Semantic Top-K context retrieval (K=4) via Gemini query embeddings & FAISS search |
 | 9 | RAG Generation | 🔲 Planned | Gemini answer generation with context |
 | 10 | Citations & Grounding | 🔲 Planned | Source/page citation resolution |
 | 11 | Web Application | 🔲 Planned | Streamlit web interface |
@@ -21,7 +21,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), and vector storage (Stage 7) are fully implemented and live validated with **72 automated unit tests passing**. End-to-end retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), and retrieval system (Stage 8) are fully implemented and live validated with **86 automated unit tests passing**. End-to-end RAG generation (Stage 9), citations, and Streamlit UI remain planned for future stages.
 
 ## Stage 4 — Document Ingestion Overview
 
@@ -96,6 +96,20 @@ Written atomically via temporary `.tmp` files to prevent partially updated state
 - `index/index_manifest.json`: Index parameters, file SHA-256 checksums, and ordered chunk IDs fingerprint (`ordered_chunk_ids_sha256`).
 - *All `index/*` files are ignored by Git via `.gitignore` (except `.gitkeep`).*
 
+## Stage 8 — Retrieval System Overview
+
+Stage 8 implements semantic Top-K document chunk retrieval using Gemini query embeddings and local FAISS vector search (`src/retrieval.py`).
+
+### Retrieval Specifications & Architecture
+- **Query Format**: `task: question answering | query: {question}` (preserves original user question string without lowercasing or transforming).
+- **Query Model & Dimension**: `gemini-embedding-2` producing 768-dimensional float vectors via official `google-genai` SDK (`client.models.embed_content`).
+- **Query Matrix Normalization**: Converted to 2D `float32` C-contiguous array `(1, 768)` and row-wise L2-normalized via `faiss.normalize_L2(query_matrix)` prior to search.
+- **Top-K Search Strategy**: Default `DEFAULT_TOP_K = 4`. Performs `scores, ids = index.search(query_matrix, top_k)` against the Stage 7 `IndexFlatIP` store. Inner product scores represent exact cosine similarity.
+- **Prerequisite Validation Order**: Question non-emptiness, index store availability, and `top_k` bounds (`1 <= top_k <= 272`) are validated **before** invoking the Gemini API endpoint, protecting API quota from invalid calls.
+- **Full-Text Result Contract**: Each returned result entry includes `rank` (1..K), `faiss_id`, `similarity_score`, `chunk_id`, `document_id`, `filename`, `page_number`, `chunk_index`, full un-truncated `text` (preserved for Stage 9 RAG generation), `title`, `publisher`, `source_url`, `estimated_token_count`, `embedding_model`, and `embedding_dimension`. Vector arrays are excluded.
+- **Live Validation & Cross-Corpus Sanity Results**: Tested across an 8-question domain sanity set spanning all 9 approved PDFs. Achieved **100% Top-1 source match rate (8/8)** and **100% Top-4 source match rate (8/8)** with similarity scores ranging from 0.73 to 0.88.
+- **Baseline Preservation**: Reranking, BM25 hybrid search, MMR, and query expansion remain deferred. The dense Top-K retrieval baseline is preserved as-is.
+
 ## Running Execution and Tests
 
 ### 1. Installation
@@ -106,18 +120,18 @@ pip install -r requirements.txt
 *Pinned Dependencies:* `pymupdf==1.28.2`, `google-genai==2.26.0`, `numpy==2.4.3`, `faiss-cpu==1.15.1`.
 
 ### 2. Run Automated Offline Test Suite
-Execute the full offline unit test suite covering Stages 4, 5, 6, and 7 (requires no network calls or API keys):
+Execute the full offline unit test suite covering Stages 4, 5, 6, 7, and 8 (requires no network calls or API keys):
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* **72 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store offline tests).
+*Coverage:* **86 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 14 Stage 8 retrieval offline tests).
 
-### 3. Run Stage 7 Vector Storage CLI (100% Offline)
-To build, persist, and verify the 272-chunk FAISS vector store:
+### 3. Run Stage 8 Retrieval CLI (Requires GEMINI_API_KEY in Process Environment)
+To execute live Top-K semantic retrieval for a user question:
 ```bash
-python -m src.vector_store
+python -m src.retrieval --query "How long do bald eagle eggs take to hatch?" --top-k 4
 ```
-*Requirement:* Existing local Stage 6 artifact `data/processed/chunk_embeddings.json`. Operates 100% offline with 0 API calls.
+*Requirement:* Existing Stage 7 index artifacts (`index/`) and `GEMINI_API_KEY` configured in process environment.
 
 ## RAG Pipeline Architecture (Planned Workflow)
 
@@ -126,8 +140,8 @@ Text-based PDFs (data/raw/)
   → Stage 4: Page-Level Raw Text Extraction (PyMuPDF) (Completed)
   → Stage 5: Light Text Normalization & Page-Bounded Chunking (Completed)
   → Stage 6: Embeddings (Gemini Embedding 2, 768-dim) (Completed)
-  → Stage 7: Vector Storage (FAISS IndexFlatIP) (Live Validated / Awaiting CEO Approval)
-  → Stage 8: Retrieval System (Top-K Context) (Planned)
+  → Stage 7: Vector Storage (FAISS IndexFlatIP) (Completed)
+  → Stage 8: Retrieval System (Top-K Context) (Live Validated / Awaiting CEO Approval)
   → Stage 9: RAG Generation (Gemini LLM) (Planned)
   → Stage 10: Citations & Grounding (Planned)
   → Stage 11: Web Application (Streamlit) (Planned)
@@ -148,7 +162,7 @@ animal-knowledge-rag/
 │   ├── chunking.py         # Stage 5: Page-bounded paragraph chunking
 │   ├── embeddings.py       # Stage 6: 768-dim Gemini chunk embeddings
 │   ├── vector_store.py     # Stage 7: FAISS IndexFlatIP index & metadata storage
-│   ├── retrieval.py        # Stage 8: Top-K document retrieval (planned)
+│   ├── retrieval.py        # Stage 8: Semantic Top-K document chunk retrieval
 │   ├── generation.py       # Stage 9: Gemini answer generation (planned)
 │   └── citations.py        # Stage 10: Source/page citation resolution (planned)
 ├── data/
@@ -163,7 +177,8 @@ animal-knowledge-rag/
     ├── test_processing.py  # Stage 5 text processing test suite
     ├── test_chunking.py    # Stage 5 chunking test suite
     ├── test_embeddings.py  # Stage 6 embedding offline test suite
-    └── test_vector_store.py# Stage 7 vector storage test suite
+    ├── test_vector_store.py# Stage 7 vector storage test suite
+    └── test_retrieval.py   # Stage 8 retrieval test suite
 ```
 
 ## Data and Licensing Policy
