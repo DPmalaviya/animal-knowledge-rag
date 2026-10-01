@@ -7,6 +7,7 @@ and local FAISS IndexFlatIP vector search.
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -86,51 +87,92 @@ def embed_query(
     prepared_query_text: str,
     model_name: str = DEFAULT_MODEL,
     dimension: int = DEFAULT_DIMENSION,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
 ) -> List[float]:
     """Embed a prepared query string using the Gemini API embed_content model.
+
+    Includes bounded retries for transient provider and network errors.
 
     Args:
         client: Configured GenAI client instance.
         prepared_query_text: Formatted query input string.
         model_name: Gemini model identifier.
         dimension: Desired output dimension (default 768).
+        max_retries: Maximum number of retry attempts (default 3, allowing up to 4 total attempts).
+        retry_delay: Initial retry delay in seconds.
 
     Returns:
         Validated 768-dimensional float embedding vector.
 
     Raises:
-        ValueError: If response contract or vector validation fails.
+        ValueError: If max_retries/retry_delay validation, response contract, auth error, or retries fail.
     """
     if types is None:
         raise ImportError("google-genai package is required for query embedding.")
 
-    config = types.EmbedContentConfig(output_dimensionality=dimension)
-    try:
-        response = client.models.embed_content(
-            model=model_name,
-            contents=prepared_query_text,
-            config=config,
-        )
-    except Exception as e:
-        err_msg = str(e).lower()
-        if any(k in err_msg for k in ["invalid_argument", "unauthorized", "forbidden", "api_key", "401", "403"]):
-            raise ValueError(f"Non-transient API authentication or permission error embedding query: {e}") from e
-        raise ValueError(f"API request failed embedding query: {e}") from e
+    if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
+        raise ValueError(f"max_retries must be a non-negative integer, got {max_retries}")
 
-    if not hasattr(response, "embeddings") or not response.embeddings:
-        raise ValueError("API response missing 'embeddings' field or embeddings list is empty.")
+    if isinstance(retry_delay, bool) or not isinstance(retry_delay, (int, float)) or retry_delay < 0:
+        raise ValueError(f"retry_delay must be a non-negative number, got {retry_delay}")
 
-    if len(response.embeddings) != 1:
-        raise ValueError(
-            f"API response returned {len(response.embeddings)} embeddings; expected exactly 1."
-        )
+    total_attempts = max_retries + 1
+    last_error: Optional[Exception] = None
 
-    single_emb = response.embeddings[0]
-    raw_values = getattr(single_emb, "values", None)
-    if raw_values is None:
-        raise ValueError("API response query embedding object missing 'values' field.")
+    for attempt in range(1, total_attempts + 1):
+        try:
+            config = types.EmbedContentConfig(output_dimensionality=dimension)
+            response = client.models.embed_content(
+                model=model_name,
+                contents=prepared_query_text,
+                config=config,
+            )
 
-    return validate_embedding_vector(raw_values, expected_dim=dimension)
+            if not hasattr(response, "embeddings") or not response.embeddings:
+                raise ValueError("API response missing 'embeddings' field or embeddings list is empty.")
+
+            if len(response.embeddings) != 1:
+                raise ValueError(
+                    f"API response returned {len(response.embeddings)} embeddings; expected exactly 1."
+                )
+
+            single_emb = response.embeddings[0]
+            raw_values = getattr(single_emb, "values", None)
+            if raw_values is None:
+                raise ValueError("API response query embedding object missing 'values' field.")
+
+            return validate_embedding_vector(raw_values, expected_dim=dimension)
+
+        except ValueError as ve:
+            # Re-raise validation errors immediately (do not retry malformed successful responses or validation failures)
+            if "api response" in str(ve).lower() or "embedding" in str(ve).lower():
+                raise ve
+            raise ve
+        except Exception as e:
+            last_error = e
+            code = None
+            if errors is not None and isinstance(e, errors.APIError):
+                code = getattr(e, "code", None)
+            if code is None:
+                code = getattr(e, "code", None) or getattr(e, "status_code", None)
+
+            # Non-transient errors (401, 403, 400) fail immediately without retry
+            if code in (401, 403, 400):
+                raise ValueError(f"Non-transient API error ({code}) embedding query: {e}") from e
+
+            err_msg = str(e).lower()
+            if any(k in err_msg for k in ["invalid_argument", "unauthorized", "forbidden", "api_key"]):
+                raise ValueError(f"Non-transient API authentication or permission error embedding query: {e}") from e
+
+            # Bounded retry on transient errors (503, 429, resource_exhausted, network errors, etc.)
+            if attempt < total_attempts:
+                sleep_time = min(60.0, retry_delay * (2 ** (attempt - 1)))
+                time.sleep(sleep_time)
+
+    raise ValueError(
+        f"Exhausted retries ({max_retries}) embedding query: {last_error}"
+    ) from last_error
 
 
 def prepare_query_matrix(
@@ -278,11 +320,13 @@ def retrieve(
     client: Optional[Any] = None,
     model_name: str = DEFAULT_MODEL,
     dimension: int = DEFAULT_DIMENSION,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
 ) -> List[Dict[str, Any]]:
     """High-level semantic Top-K document retrieval pipeline.
 
-    Validates prerequisites (question formatting, index loading, top_k range)
-    prior to invoking the Gemini API embedding endpoint.
+    Validates prerequisites (question formatting, index loading, top_k range,
+    and query/index model/dimension compatibility) PRIOR to invoking the Gemini API endpoint.
 
     Args:
         question: Raw user question string.
@@ -292,12 +336,14 @@ def retrieve(
         client: Optional pre-configured GenAI client instance.
         model_name: Gemini embedding model name (default "gemini-embedding-2").
         dimension: Output vector dimension (default 768).
+        max_retries: Maximum number of retry attempts for query embedding (default 3).
+        retry_delay: Retry delay in seconds.
 
     Returns:
         List of Top-K retrieved result dictionaries.
 
     Raises:
-        ValueError: If prerequisite checks, embedding, or search fails.
+        ValueError: If prerequisite checks, compatibility, embedding, or search fails.
     """
     # 1. Validate question prerequisite
     prepared_query = prepare_query_text(question)
@@ -308,19 +354,40 @@ def retrieve(
     # 3. Validate top_k prerequisite against index ntotal
     validate_top_k(top_k, max_available=index.ntotal)
 
-    # 4. Create client & request query embedding
+    # 4. Validate query/index compatibility BEFORE creating client or calling live API
+    manifest_model = manifest.get("embedding_model")
+    manifest_dim = manifest.get("dimension")
+
+    if model_name != manifest_model:
+        raise ValueError(
+            f"Query model_name '{model_name}' is incompatible with index manifest model '{manifest_model}'."
+        )
+
+    if dimension != manifest_dim:
+        raise ValueError(
+            f"Query dimension {dimension} is incompatible with index manifest dimension {manifest_dim}."
+        )
+
+    if dimension != index.d or dimension != DEFAULT_DIMENSION:
+        raise ValueError(
+            f"Query dimension {dimension} is incompatible with FAISS index dimension {index.d}."
+        )
+
+    # 5. Create client & request query embedding
     active_client = client or create_genai_client(api_key=api_key)
     query_vector = embed_query(
         active_client,
         prepared_query,
         model_name=model_name,
         dimension=dimension,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
     )
 
-    # 5. Prepare normalized query matrix
+    # 6. Prepare normalized query matrix
     query_matrix = prepare_query_matrix(query_vector, expected_dim=dimension)
 
-    # 6. Execute search and map metadata
+    # 7. Execute search and map metadata
     return search_by_vector(index, metadata, query_matrix, top_k=top_k)
 
 
@@ -349,18 +416,20 @@ def format_cli_results(
     ]
 
     for r in results:
-        text_snippet = r['text'].replace('\n', ' ')
+        text_snippet = r["text"].replace("\n", " ")
         if len(text_snippet) > preview_length:
             text_snippet = text_snippet[:preview_length] + "..."
 
-        lines.extend([
-            f"Rank #{r['rank']} | Similarity Score: {r['similarity_score']:.6f}",
-            f"  Chunk ID:   {r['chunk_id']}",
-            f"  Filename:   {r['filename']} (Page {r['page_number']})",
-            f"  Title:      {r['title']}",
-            f"  Snippet:    \"{text_snippet}\"",
-            "-" * 80,
-        ])
+        lines.extend(
+            [
+                f"Rank #{r['rank']} | Similarity Score: {r['similarity_score']:.6f}",
+                f"  Chunk ID:   {r['chunk_id']}",
+                f"  Filename:   {r['filename']} (Page {r['page_number']})",
+                f"  Title:      {r['title']}",
+                f"  Snippet:    \"{text_snippet}\"",
+                "-" * 80,
+            ]
+        )
 
     return "\n".join(lines)
 

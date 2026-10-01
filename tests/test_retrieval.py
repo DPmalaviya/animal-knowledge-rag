@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import faiss
 import numpy as np
+from google.genai import errors
 
 from src.retrieval import (
     DEFAULT_TOP_K,
@@ -280,6 +281,177 @@ class TestRetrievalSystem(unittest.TestCase):
         finally:
             if env_key:
                 os.environ["GEMINI_API_KEY"] = env_key
+
+    @patch("src.retrieval.time.sleep")
+    def test_15_retry_behavior_401(self, mock_sleep):
+        """Prove 401 error results in exactly one attempt, zero sleep, and immediate failure."""
+        mock_client = MagicMock()
+        err_401 = errors.APIError(401, {"error": {"message": "Unauthorized API key", "code": 401}})
+        mock_client.models.embed_content.side_effect = err_401
+
+        with self.assertRaises(ValueError) as ctx:
+            embed_query(mock_client, "query text", max_retries=3, retry_delay=1.0)
+
+        self.assertEqual(mock_client.models.embed_content.call_count, 1)
+        mock_sleep.assert_not_called()
+        self.assertIn("non-transient", str(ctx.exception).lower())
+
+    @patch("src.retrieval.time.sleep")
+    def test_16_retry_behavior_403(self, mock_sleep):
+        """Prove 403 error results in exactly one attempt, zero sleep, and immediate failure."""
+        mock_client = MagicMock()
+        err_403 = errors.APIError(403, {"error": {"message": "Forbidden access", "code": 403}})
+        mock_client.models.embed_content.side_effect = err_403
+
+        with self.assertRaises(ValueError) as ctx:
+            embed_query(mock_client, "query text", max_retries=3, retry_delay=1.0)
+
+        self.assertEqual(mock_client.models.embed_content.call_count, 1)
+        mock_sleep.assert_not_called()
+        self.assertIn("non-transient", str(ctx.exception).lower())
+
+    @patch("src.retrieval.time.sleep")
+    def test_17_retry_behavior_503_then_success(self, mock_sleep):
+        """Prove 503 followed by success results in two attempts and one bounded sleep."""
+        mock_client = MagicMock()
+        err_503 = errors.APIError(503, {"error": {"message": "Service Unavailable", "code": 503}})
+
+        mock_embedding = MagicMock()
+        mock_embedding.values = np.random.randn(self.dim).tolist()
+        mock_response = MagicMock()
+        mock_response.embeddings = [mock_embedding]
+
+        mock_client.models.embed_content.side_effect = [err_503, mock_response]
+
+        vec = embed_query(mock_client, "query text", max_retries=3, retry_delay=1.0)
+
+        self.assertEqual(len(vec), self.dim)
+        self.assertEqual(mock_client.models.embed_content.call_count, 2)
+        mock_sleep.assert_called_once_with(1.0)
+
+    @patch("src.retrieval.time.sleep")
+    def test_18_retry_behavior_repeated_transient_failures(self, mock_sleep):
+        """Prove max_retries + 1 attempts on repeated transient errors, then clear failure."""
+        mock_client = MagicMock()
+        err_503 = errors.APIError(503, {"error": {"message": "Service Unavailable", "code": 503}})
+        mock_client.models.embed_content.side_effect = err_503
+
+        with self.assertRaises(ValueError) as ctx:
+            embed_query(mock_client, "query text", max_retries=3, retry_delay=1.0)
+
+        self.assertEqual(mock_client.models.embed_content.call_count, 4)
+        self.assertEqual(mock_sleep.call_count, 3)
+        mock_sleep.assert_has_calls([unittest.mock.call(1.0), unittest.mock.call(2.0), unittest.mock.call(4.0)])
+        self.assertIn("exhausted retries", str(ctx.exception).lower())
+
+    @patch("src.retrieval.time.sleep")
+    def test_19_retry_behavior_max_retries_zero(self, mock_sleep):
+        """Prove max_retries=0 allows exactly 1 attempt and no sleep on transient failure."""
+        mock_client = MagicMock()
+        err_503 = errors.APIError(503, {"error": {"message": "Service Unavailable", "code": 503}})
+        mock_client.models.embed_content.side_effect = err_503
+
+        with self.assertRaises(ValueError) as ctx:
+            embed_query(mock_client, "query text", max_retries=0, retry_delay=1.0)
+
+        self.assertEqual(mock_client.models.embed_content.call_count, 1)
+        mock_sleep.assert_not_called()
+        self.assertIn("exhausted retries", str(ctx.exception).lower())
+
+    @patch("src.retrieval.time.sleep")
+    def test_20_retry_behavior_429_bounded(self, mock_sleep):
+        """Prove retryable 429 rate limit is retried with bounded wait and eventual success."""
+        mock_client = MagicMock()
+        err_429 = errors.APIError(429, {"error": {"message": "Resource Exhausted", "code": 429}})
+
+        mock_embedding = MagicMock()
+        mock_embedding.values = np.random.randn(self.dim).tolist()
+        mock_response = MagicMock()
+        mock_response.embeddings = [mock_embedding]
+
+        mock_client.models.embed_content.side_effect = [err_429, mock_response]
+
+        vec = embed_query(mock_client, "query text", max_retries=3, retry_delay=1.0)
+
+        self.assertEqual(len(vec), self.dim)
+        self.assertEqual(mock_client.models.embed_content.call_count, 2)
+        mock_sleep.assert_called_once_with(1.0)
+
+    @patch("src.retrieval.time.sleep")
+    def test_21_retry_behavior_success_first_attempt(self, mock_sleep):
+        """Prove successful first attempt causes exactly 1 API call and zero sleeps."""
+        mock_client = MagicMock()
+        mock_embedding = MagicMock()
+        mock_embedding.values = np.random.randn(self.dim).tolist()
+        mock_response = MagicMock()
+        mock_response.embeddings = [mock_embedding]
+
+        mock_client.models.embed_content.return_value = mock_response
+
+        vec = embed_query(mock_client, "query text", max_retries=3, retry_delay=1.0)
+
+        self.assertEqual(len(vec), self.dim)
+        self.assertEqual(mock_client.models.embed_content.call_count, 1)
+        mock_sleep.assert_not_called()
+
+    def test_22_model_mismatch_rejected_before_api_call(self):
+        """Prove model mismatch with same 768 dimensions is rejected BEFORE any API call."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_vector_store(self.index, self.metadata, index_dir=tmpdir)
+            mock_client = MagicMock()
+
+            with self.assertRaises(ValueError) as ctx:
+                retrieve(
+                    "What do bald eagles eat?",
+                    index_dir=tmpdir,
+                    model_name="gemini-embedding-1",
+                    dimension=DEFAULT_DIMENSION,
+                    client=mock_client,
+                )
+
+            mock_client.models.embed_content.assert_not_called()
+            self.assertIn("incompatible with index manifest model", str(ctx.exception).lower())
+
+    def test_23_dimension_mismatch_rejected_before_api_call(self):
+        """Prove dimension mismatch is rejected BEFORE any API call."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_vector_store(self.index, self.metadata, index_dir=tmpdir)
+            mock_client = MagicMock()
+
+            with self.assertRaises(ValueError) as ctx:
+                retrieve(
+                    "What do bald eagles eat?",
+                    index_dir=tmpdir,
+                    model_name=DEFAULT_MODEL,
+                    dimension=512,
+                    client=mock_client,
+                )
+
+            mock_client.models.embed_content.assert_not_called()
+            self.assertIn("incompatible with index manifest dimension", str(ctx.exception).lower())
+
+    def test_24_matching_model_and_dimension_proceed_normally(self):
+        """Prove matching model and dimension settings proceed normally through embedding & retrieval."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_vector_store(self.index, self.metadata, index_dir=tmpdir)
+            mock_client = MagicMock()
+            mock_embedding = MagicMock()
+            mock_embedding.values = list(self.records[0]["embedding"])
+            mock_response = MagicMock()
+            mock_response.embeddings = [mock_embedding]
+            mock_client.models.embed_content.return_value = mock_response
+
+            results = retrieve(
+                "What do bald eagles eat?",
+                index_dir=tmpdir,
+                model_name=DEFAULT_MODEL,
+                dimension=DEFAULT_DIMENSION,
+                client=mock_client,
+            )
+
+            mock_client.models.embed_content.assert_called_once()
+            self.assertEqual(len(results), DEFAULT_TOP_K)
+            self.assertEqual(results[0]["chunk_id"], self.records[0]["chunk_id"])
 
 
 if __name__ == "__main__":
