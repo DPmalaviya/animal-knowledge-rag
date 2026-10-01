@@ -10,8 +10,8 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 2 | GitHub Setup | ✅ CEO Approved | Repository foundation & baseline workflow |
 | 3 | Demo Dataset | ✅ CEO Approved | 9 PDFs / 85 physical pages with manifest metadata |
 | 4 | Document Ingestion | ✅ CEO Approved | Page-level raw text extraction & manifest validation |
-| 5 | Text Processing & Chunking | 🟡 Awaiting CEO Review | Light text normalization & page-bounded paragraph chunking |
-| 6 | Embeddings | 🔲 Planned | Gemini Embedding 2 (768-dimensional output) |
+| 5 | Text Processing & Chunking | ✅ CEO Approved | Light text normalization & page-bounded paragraph chunking |
+| 6 | Embeddings | 🟡 Awaiting API Key / CEO Review | 768-dim vector generation via official Google Gen AI SDK |
 | 7 | Vector Storage | 🔲 Planned | FAISS vector index management |
 | 8 | Retrieval System | 🔲 Planned | Top-K context retrieval (initially K=4) |
 | 9 | RAG Generation | 🔲 Planned | Gemini answer generation with context |
@@ -21,7 +21,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4) and text processing & chunking (Stage 5) are fully implemented with **31 automated tests passing**. End-to-end vector embeddings, retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), and embeddings module architecture (Stage 6) are fully implemented with **47 automated unit tests passing** (100% offline using mocks). End-to-end vector storage (FAISS), retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
 
 ## Stage 4 — Document Ingestion Overview
 
@@ -37,34 +37,31 @@ Stage 4 implements robust, page-level PDF text extraction and strict dataset val
 
 Stage 5 implements non-destructive text normalization and deterministic, page-bounded paragraph chunking (`src/processing.py` and `src/chunking.py`).
 
-### Processing & Normalization Rules (`src/processing.py`)
-- **Newline Normalization**: Converts `\r\n` and `\r` to standard `\n`.
-- **Horizontal Space Collapse**: Collapses multiple spaces and tabs into a single space per line (`re.sub(r"[ \t]+", " ", line).strip()`).
-- **Paragraph Preservation**: Retains double newlines (`\n\n`) to preserve paragraph boundaries while collapsing 3+ consecutive newlines (`\n{3,}` -> `\n\n`).
-- **Punctuation & Vocabulary Preservation**: Retains headings, punctuation, capitalization, scientific nomenclature (e.g. *Chelonia mydas*), numbers, and legitimate hyphenated terms ("scent-detection", "non-lead"). Automatic dehyphenation across line wraps is explicitly deferred to avoid misjoining compound terms.
-- **Header/Footer Exclusions**: Avoids destructive text deletion. Raw text block integrity is maintained across all 85 source pages.
+### Corpus Metrics & Integrity
+- **Total Chunks Generated:** **272 chunks** across 9 documents and 85 distinct physical pages.
+- **Chunk Sizing:** Target 450 tokens (~1,800 chars), Hard Max 600 tokens (~2,400 chars).
+- **Deterministic Chunk IDs:** `{document_id}_p{page_number:03d}_c{chunk_index:03d}`.
 
-### Page-Bounded Chunking Strategy (`src/chunking.py`)
-- **Page Boundary Contract**: Every chunk belongs strictly to **exactly one physical PDF page** (`page_number`). No text or overlap crosses page boundaries.
-- **Deterministic Token Estimation**: `estimate_tokens(text) = max(1, len(text) // 4)` (~4 characters per token).
-- **Target Size**: 450 estimated tokens (~1,800 characters).
-- **Hard Maximum**: 600 estimated tokens (~2,400 characters). Zero chunks exceed this maximum.
-- **Bounded Overlap & Small-Tail Merging**: Up to 75 tokens (~300 characters) of trailing sentences from the preceding chunk on the *same page* are prepended to the subsequent chunk. Small trailing chunks (<100 tokens) are merged back into preceding chunks on the same page when total size <= 600 tokens; duplicate overlap is explicitly prevented during merges by concatenating only the trailing chunk's new source content.
-- **Oversized Paragraph/Sentence Fallback**: Paragraphs exceeding target sizes are split into sentences, and oversized sentences are split into word groups. Uninterrupted sequences (e.g. long URLs) are sliced at character thresholds to guarantee loop termination and size compliance.
-- **Deterministic Chunk IDs**: `{document_id}_p{page_number:03d}_c{chunk_index:03d}` (1-based chunk index per page).
+## Stage 6 — Embeddings Overview
 
-### Chunk Record Structure
-Each generated chunk dictionary contains:
-- `chunk_id`: Deterministic unique identifier (e.g. `doc_bald_eagle_p001_c001`)
-- `document_id`: Source document identifier
-- `filename`: Source PDF filename
-- `page_number`: 1-based physical page number
-- `chunk_index`: 1-based chunk index on this page
-- `text`: Processed chunk text block
-- `title`: Publication title from manifest
-- `publisher`: Publisher from manifest
-- `source_url`: Canonical URL source from manifest
-- `estimated_token_count`: Measured token estimate
+Stage 6 implements 768-dimensional vector embedding generation using the official `google-genai` SDK and the `gemini-embedding-2` model (`src/embeddings.py`).
+
+### Embedding Specifications
+- **SDK**: `google-genai==2.26.0` (`from google import genai`, `from google.genai import types`)
+- **Model Identifier**: `gemini-embedding-2`
+- **Output Dimensionality**: 768 (`config=types.EmbedContentConfig(output_dimensionality=768)`)
+- **Document Input Format**: `title: {title} | text: {chunk_text}` (preserves original chunk text and metadata without injecting IDs or URLs into semantic input)
+- **Reserved Question Format (Stage 8)**: `task: question answering | query: {question}`
+- **Request Strategy**: One chunk per request (sequential execution with bounded retries and exponential backoff).
+- **Vector Integrity**: Verifies that returned vectors have length 768, contain 100% finite numeric floats, and have a non-zero L2 norm. Returned vectors are preserved as-is without re-normalization.
+
+### Secure Environment Configuration
+Live API execution requires configuring the `GEMINI_API_KEY` environment variable:
+```bash
+export GEMINI_API_KEY="your-api-key-here"
+```
+Or set `GEMINI_API_KEY` in a local `.env` file (which is gitignored). If `GEMINI_API_KEY` is not set, the pipeline fails cleanly with:
+`ValueError: GEMINI_API_KEY is not set.`
 
 ## Running Execution and Tests
 
@@ -74,37 +71,35 @@ Install verified dependencies:
 pip install -r requirements.txt
 ```
 
-### 2. Run Corpus Ingestion (Stage 4)
-```bash
-python -m src.ingestion
-```
-*Output Summary:* Successfully ingests 9 documents yielding 85 page records across 500,649 raw extracted characters.
-
-### 3. Run Processing & Chunking Pipeline (Stage 5)
-```bash
-python -m src.chunking
-```
-*Measured Metrics Summary:*
-- **Input Corpus:** 9 documents / 85 physical pages / 500,649 raw chars.
-- **Processed Page Text:** 373,278 characters (whitespace/padding collapsed without text loss).
-- **Total Chunks Generated:** **272 chunks** across 9 documents and 85 distinct source pages.
-- **Size Metrics:** Minimum: 62 tokens | Maximum: 518 tokens | Mean: 385.2 tokens | Median: 422.0 tokens.
-- **Integrity:** 0 empty chunks, 0 duplicate IDs, 0 hard-maximum violations (>600 tokens).
-
-### 4. Run Automated Test Suite
-Execute the full `unittest` test suite covering Stages 4 and 5:
+### 2. Run Automated Offline Test Suite
+Execute the full offline unit test suite covering Stages 4, 5, and 6 (requires no network calls or API keys):
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* **31 automated tests passing** verifying manifest loading, metadata preservation, unlisted file detection, 1-based page contiguity, text normalization, paragraph preservation, page-bounded chunking, overlap rules, small-tail merge overlap deduplication, fallback splitting, and deterministic chunk ID uniqueness.
+*Coverage:* **47 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 16 Stage 6 embedding offline tests).
+
+### 3. Run Live Embeddings Pipeline (Requires GEMINI_API_KEY)
+To run a 1-chunk smoke test:
+```bash
+python -m src.embeddings --smoke
+```
+To run a 3-chunk representative sample test (Factsheet, PLOS, Frontiers):
+```bash
+python -m src.embeddings --sample
+```
+To run full-corpus 272-chunk embedding generation:
+```bash
+python -m src.embeddings
+```
+*Output Artifact:* Saved atomically to `data/processed/chunk_embeddings.json` (gitignored).
 
 ## RAG Pipeline Architecture (Planned Workflow)
 
 ```
 Text-based PDFs (data/raw/)
-  → Stage 4: Page-Level Raw Text Extraction (PyMuPDF)
+  → Stage 4: Page-Level Raw Text Extraction (PyMuPDF) (Completed)
   → Stage 5: Light Text Normalization & Page-Bounded Chunking (Completed)
-  → Stage 6: Embeddings (Gemini Embedding 2, 768-dim) (Planned)
+  → Stage 6: Embeddings (Gemini Embedding 2, 768-dim) (Implemented / Awaiting Key)
   → Stage 7: Vector Storage (FAISS Index) (Planned)
   → Stage 8: Retrieval System (Top-K Context) (Planned)
   → Stage 9: RAG Generation (Gemini LLM) (Planned)
@@ -117,7 +112,7 @@ Text-based PDFs (data/raw/)
 ```
 animal-knowledge-rag/
 ├── app.py                  # Streamlit application entry point (placeholder)
-├── requirements.txt        # Verified project dependencies (pymupdf==1.28.2)
+├── requirements.txt        # Verified project dependencies (pymupdf==1.28.2, google-genai==2.26.0)
 ├── .env.example            # Environment variable template
 ├── .gitignore              # Git ignore rules
 ├── README.md               # Root documentation
@@ -125,7 +120,7 @@ animal-knowledge-rag/
 │   ├── ingestion.py        # Stage 4: Manifest validation & PDF text extraction
 │   ├── processing.py       # Stage 5: Light text normalization
 │   ├── chunking.py         # Stage 5: Page-bounded paragraph chunking
-│   ├── embeddings.py       # Stage 6: Gemini embedding generation (planned)
+│   ├── embeddings.py       # Stage 6: 768-dim Gemini chunk embeddings
 │   ├── vector_store.py     # Stage 7: FAISS index management (planned)
 │   ├── retrieval.py        # Stage 8: Top-K document retrieval (planned)
 │   ├── generation.py       # Stage 9: Gemini answer generation (planned)
@@ -140,7 +135,8 @@ animal-knowledge-rag/
 └── tests/
     ├── test_ingestion.py   # Stage 4 ingestion test suite
     ├── test_processing.py  # Stage 5 text processing test suite
-    └── test_chunking.py    # Stage 5 chunking test suite
+    ├── test_chunking.py    # Stage 5 chunking test suite
+    └── test_embeddings.py  # Stage 6 embedding offline test suite
 ```
 
 ## Data and Licensing Policy

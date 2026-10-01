@@ -1,1 +1,2 @@
 pymupdf==1.28.2
+google-genai==2.26.0
