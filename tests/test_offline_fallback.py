@@ -1,6 +1,7 @@
 """Tests for deterministic, network-free corpus retrieval."""
 
 import copy
+import hashlib
 import json
 import math
 import tempfile
@@ -28,6 +29,27 @@ def make_record(faiss_id, *, title="Animal research", text="Animal evidence"):
         "embedding_model": "gemini-embedding-2",
         "embedding_dimension": 768,
     }
+
+
+def write_artifacts(index_dir, records, manifest_overrides=None):
+    """Write metadata plus a matching minimal integrity manifest."""
+    metadata_path = Path(index_dir) / "chunk_metadata.json"
+    metadata_path.write_text(json.dumps(records), encoding="utf-8")
+    chunk_ids = [record["chunk_id"] for record in records]
+    manifest = {
+        "metadata_count": len(records),
+        "embedding_model": "gemini-embedding-2",
+        "dimension": 768,
+        "chunk_metadata_sha256": hashlib.sha256(metadata_path.read_bytes()).hexdigest(),
+        "ordered_chunk_ids_sha256": hashlib.sha256(
+            json.dumps(chunk_ids, separators=(",", ":")).encode("utf-8")
+        ).hexdigest(),
+    }
+    manifest.update(manifest_overrides or {})
+    (Path(index_dir) / "index_manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    return metadata_path
 
 
 class TestLocalLexicalRetrieval(unittest.TestCase):
@@ -124,6 +146,51 @@ class TestLocalLexicalRetrieval(unittest.TestCase):
                 with self.subTest(value=value), self.assertRaises(ValueError):
                     retrieve_locally("eagle", temp_dir, top_k=1)
 
+    def test_retrieve_rejects_missing_or_malformed_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            metadata_path = Path(temp_dir) / "chunk_metadata.json"
+            metadata_path.write_text(json.dumps([make_record(0)]), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                retrieve_locally("animal", temp_dir, top_k=1)
+
+            manifest_path = Path(temp_dir) / "index_manifest.json"
+            for manifest_text in ("{not json", "[]"):
+                manifest_path.write_text(manifest_text, encoding="utf-8")
+                with self.subTest(manifest_text=manifest_text), self.assertRaises(ValueError):
+                    retrieve_locally("animal", temp_dir, top_k=1)
+
+    def test_retrieve_rejects_manifest_contract_mismatches(self):
+        mismatches = (
+            {"metadata_count": 2},
+            {"embedding_model": "other-model"},
+            {"dimension": 512},
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for override in mismatches:
+                write_artifacts(temp_dir, [make_record(0)], override)
+                with self.subTest(override=override), self.assertRaises(ValueError):
+                    retrieve_locally("animal", temp_dir, top_k=1)
+
+    def test_retrieve_rejects_metadata_checksum_mismatch(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            metadata_path = write_artifacts(temp_dir, [make_record(0)])
+            metadata_path.write_text(
+                json.dumps([make_record(0, text="tampered animal evidence")]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                retrieve_locally("animal", temp_dir, top_k=1)
+
+    def test_retrieve_rejects_ordered_chunk_id_fingerprint_mismatch(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            write_artifacts(
+                temp_dir,
+                [make_record(0)],
+                {"ordered_chunk_ids_sha256": "0" * 64},
+            )
+            with self.assertRaisesRegex(ValueError, "fingerprint mismatch"):
+                retrieve_locally("animal", temp_dir, top_k=1)
+
     def test_retrieve_rejects_malformed_metadata_records(self):
         malformed_cases = []
         missing = make_record(0)
@@ -137,11 +204,18 @@ class TestLocalLexicalRetrieval(unittest.TestCase):
         malformed_cases.append([bad_model])
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            metadata_path = Path(temp_dir) / "chunk_metadata.json"
             for records in malformed_cases:
-                metadata_path.write_text(json.dumps(records), encoding="utf-8")
+                write_artifacts(temp_dir, records)
                 with self.subTest(records=records), self.assertRaises(ValueError):
                     retrieve_locally("animal", temp_dir, top_k=1)
+
+    def test_retrieve_rejects_duplicate_chunk_ids(self):
+        records = [make_record(0), make_record(1)]
+        records[1]["chunk_id"] = records[0]["chunk_id"]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            write_artifacts(temp_dir, records)
+            with self.assertRaisesRegex(ValueError, "duplicate chunk_id"):
+                retrieve_locally("animal", temp_dir, top_k=1)
 
     def test_retrieve_rejects_duplicate_or_out_of_order_faiss_ids(self):
         cases = [
@@ -150,17 +224,15 @@ class TestLocalLexicalRetrieval(unittest.TestCase):
             [make_record(0), make_record(2)],
         ]
         with tempfile.TemporaryDirectory() as temp_dir:
-            metadata_path = Path(temp_dir) / "chunk_metadata.json"
             for records in cases:
-                metadata_path.write_text(json.dumps(records), encoding="utf-8")
+                write_artifacts(temp_dir, records)
                 with self.subTest(ids=[r["faiss_id"] for r in records]):
                     with self.assertRaises(ValueError):
                         retrieve_locally("animal", temp_dir, top_k=1)
 
     def test_retrieve_rejects_top_k_above_available_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            metadata_path = Path(temp_dir) / "chunk_metadata.json"
-            metadata_path.write_text(json.dumps([make_record(0)]), encoding="utf-8")
+            write_artifacts(temp_dir, [make_record(0)])
             with self.assertRaises(ValueError):
                 retrieve_locally("animal", temp_dir, top_k=2)
 

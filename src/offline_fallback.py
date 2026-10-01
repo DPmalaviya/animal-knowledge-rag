@@ -1,5 +1,6 @@
 """Deterministic, dependency-free lexical retrieval over local chunk metadata."""
 
+import hashlib
 import json
 import math
 import re
@@ -152,6 +153,7 @@ def _validate_metadata(metadata: Any) -> List[Dict[str, Any]]:
         raise ValueError("Metadata must be a non-empty list.")
 
     seen_ids = set()
+    seen_chunk_ids = set()
     for position, record in enumerate(metadata):
         _validate_record(record, position)
         faiss_id = record["faiss_id"]
@@ -161,14 +163,51 @@ def _validate_metadata(metadata: Any) -> List[Dict[str, Any]]:
             raise ValueError(
                 "Metadata faiss_id values must match canonical metadata-list order."
             )
+        chunk_id = record["chunk_id"]
+        if chunk_id in seen_chunk_ids:
+            raise ValueError(f"duplicate chunk_id '{chunk_id}' in metadata.")
         seen_ids.add(faiss_id)
+        seen_chunk_ids.add(chunk_id)
     return metadata
+
+
+def _sha256_bytes(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _chunk_ids_fingerprint(metadata: List[Dict[str, Any]]) -> str:
+    chunk_ids = [record["chunk_id"] for record in metadata]
+    serialized = json.dumps(chunk_ids, separators=(",", ":"))
+    return _sha256_bytes(serialized.encode("utf-8"))
+
+
+def _validate_manifest(
+    manifest: Any, metadata: List[Dict[str, Any]], metadata_sha256: str
+) -> None:
+    if not isinstance(manifest, dict):
+        raise ValueError("Loaded manifest is not a dictionary.")
+    if manifest.get("metadata_count") != len(metadata):
+        raise ValueError("Manifest metadata_count does not match metadata length.")
+    if manifest.get("embedding_model") != "gemini-embedding-2":
+        raise ValueError("Manifest embedding_model does not match expected model.")
+    dimension = manifest.get("dimension")
+    if isinstance(dimension, bool) or dimension != 768:
+        raise ValueError("Manifest dimension does not match expected dimension.")
+    if manifest.get("chunk_metadata_sha256") != metadata_sha256:
+        raise ValueError("Metadata checksum mismatch.")
+    if manifest.get("ordered_chunk_ids_sha256") != _chunk_ids_fingerprint(metadata):
+        raise ValueError("Ordered chunk IDs fingerprint mismatch.")
 
 
 def rank_metadata(
     question: str, metadata: List[Dict[str, Any]], top_k: int
 ) -> List[Dict[str, Any]]:
-    """Rank validated metadata using deterministic normalized lexical scores."""
+    """Rank metadata by normalized lexical score and canonical stored-list order.
+
+    The normalization denominator counts every unweighted meaningful token
+    occurrence in the candidate's title plus text. Because validated ``faiss_id``
+    values equal list positions, ascending ``faiss_id`` is canonical stored order.
+    """
     _validate_question(question)
     validated_metadata = _validate_metadata(metadata)
     _validate_top_k(top_k, len(validated_metadata))
@@ -189,12 +228,14 @@ def rank_metadata(
         if numerator == 0:
             continue
 
+        # Denominator counts unweighted title + text token occurrences.
         candidate_token_count = len(title_tokens) + len(text_tokens)
         score = numerator / math.sqrt(candidate_token_count)
         result = dict(record)
         result["similarity_score"] = float(score)
         scored.append(result)
 
+    # faiss_id equals canonical stored list position after metadata validation.
     scored.sort(key=lambda record: (-record["similarity_score"], record["faiss_id"]))
     results = scored[:top_k]
     for rank, result in enumerate(results, start=1):
@@ -208,16 +249,27 @@ def retrieve_locally(
     """Load local chunk metadata and return deterministic lexical matches."""
     _validate_question(question)
     metadata_path = Path(index_dir) / "chunk_metadata.json"
+    manifest_path = Path(index_dir) / "index_manifest.json"
     try:
-        raw_text = metadata_path.read_text(encoding="utf-8")
+        metadata_bytes = metadata_path.read_bytes()
     except (OSError, TypeError) as exc:
         raise ValueError(f"Unable to read metadata file: {metadata_path}") from exc
 
     try:
-        metadata = json.loads(raw_text)
-    except (json.JSONDecodeError, TypeError) as exc:
+        metadata = json.loads(metadata_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
         raise ValueError(f"Malformed metadata JSON: {metadata_path}") from exc
 
     validated_metadata = _validate_metadata(metadata)
+    try:
+        manifest_text = manifest_path.read_text(encoding="utf-8")
+    except (OSError, TypeError) as exc:
+        raise ValueError(f"Unable to read manifest file: {manifest_path}") from exc
+    try:
+        manifest = json.loads(manifest_text)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(f"Malformed manifest JSON: {manifest_path}") from exc
+
+    _validate_manifest(manifest, validated_metadata, _sha256_bytes(metadata_bytes))
     _validate_top_k(top_k, len(validated_metadata))
     return rank_metadata(question, validated_metadata, top_k)
