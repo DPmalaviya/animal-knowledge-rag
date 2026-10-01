@@ -7,6 +7,7 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from src.generation import (
     DEFAULT_GENERATION_MODEL,
@@ -269,6 +270,9 @@ class TestExtractiveAnswer(unittest.TestCase):
         )
         return record
 
+    def padded_sentence(self, prefix, length):
+        return prefix + ("x" * (length - len(prefix) - 1)) + "."
+
     def test_sentence_splitting_uses_terminal_punctuation_and_whitespace(self):
         text = "  First exact sentence!\nSecond one?  Third. Fourth fragment  "
         self.assertEqual(
@@ -315,6 +319,42 @@ class TestExtractiveAnswer(unittest.TestCase):
         source_text = result["answer"].replace(" [C1]", "").replace("\n", "")
         self.assertLessEqual(len(source_text), 600)
 
+    def test_cumulative_source_text_budget_never_exceeds_600_characters(self):
+        sentences = [
+            self.padded_sentence("Eagle alpha ", 250),
+            self.padded_sentence("Eagle beta ", 250),
+            self.padded_sentence("Eagle gamma ", 250),
+        ]
+        result = build_extractive_rag_result(
+            "eagle", [self.ranked_record(0, text=" ".join(sentences))]
+        )
+        self.assertEqual(
+            result["answer"],
+            f"{sentences[0]} [C1]\n{sentences[1]} [C1]",
+        )
+        self.assertEqual(sum(len(sentence) for sentence in sentences[:2]), 500)
+        self.assertNotIn(sentences[2], result["answer"])
+
+    def test_over_remaining_budget_is_skipped_and_later_fitting_sentence_selected(self):
+        selected_first = self.padded_sentence("Eagle alpha ", 400)
+        skipped = self.padded_sentence("Eagle beta ", 250)
+        selected_later = self.padded_sentence("Eagle gamma ", 150)
+        result = build_extractive_rag_result(
+            "eagle",
+            [
+                self.ranked_record(
+                    0,
+                    text=f"{selected_first} {skipped} {selected_later}",
+                )
+            ],
+        )
+        self.assertEqual(
+            result["answer"],
+            f"{selected_first} [C1]\n{selected_later} [C1]",
+        )
+        self.assertNotIn(skipped, result["answer"])
+        self.assertEqual(len(selected_first) + len(selected_later), 550)
+
     def test_skips_over_budget_sentence_without_truncating(self):
         too_long = "Eagle " + ("x" * 594) + "."
         fitting = "Eagle fits."
@@ -358,6 +398,34 @@ class TestExtractiveAnswer(unittest.TestCase):
         }
         self.assertEqual(build_offline_fallback_result("eagle"), expected)
         self.assertEqual(resolve_extractive_result("eagle", unsupported), expected)
+        self.assertEqual(resolve_extractive_result("eagle", []), expected)
+
+    def test_extractive_and_fallback_resolution_make_no_client_or_network_calls(self):
+        supported = [
+            self.ranked_record(0, text="Bald eagles ingest lead fragments.")
+        ]
+        with (
+            patch(
+                "src.generation.create_genai_client",
+                side_effect=AssertionError("client creation must remain offline"),
+            ) as create_client,
+            patch(
+                "src.retrieval.embed_query",
+                side_effect=AssertionError("network embedding must remain offline"),
+            ) as embed_query,
+            patch(
+                "src.generation.generate_grounded_answer",
+                side_effect=AssertionError("network generation must remain offline"),
+            ) as generate_answer,
+        ):
+            supported_result = resolve_extractive_result("eagle lead", supported)
+            fallback_result = resolve_extractive_result("eagle lead", [])
+
+        self.assertFalse(supported_result["is_fallback"])
+        self.assertTrue(fallback_result["is_fallback"])
+        create_client.assert_not_called()
+        embed_query.assert_not_called()
+        generate_answer.assert_not_called()
 
     def test_supported_result_resolves_citations_and_preserves_mode(self):
         records = [
