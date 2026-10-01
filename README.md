@@ -9,8 +9,8 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 1 | Project Design | ✅ CEO Approved | System architecture & roadmap defined |
 | 2 | GitHub Setup | ✅ CEO Approved | Repository foundation & baseline workflow |
 | 3 | Demo Dataset | ✅ CEO Approved | 9 PDFs / 85 physical pages with manifest metadata |
-| 4 | Document Ingestion | 🟡 Awaiting CEO Review | Page-level raw text extraction & manifest validation |
-| 5 | Text Processing & Chunking | 🔲 Planned | Text normalization & page/paragraph-aware chunking |
+| 4 | Document Ingestion | ✅ CEO Approved | Page-level raw text extraction & manifest validation |
+| 5 | Text Processing & Chunking | 🟡 Awaiting CEO Review | Light text normalization & page-bounded paragraph chunking |
 | 6 | Embeddings | 🔲 Planned | Gemini Embedding 2 (768-dimensional output) |
 | 7 | Vector Storage | 🔲 Planned | FAISS vector index management |
 | 8 | Retrieval System | 🔲 Planned | Top-K context retrieval (initially K=4) |
@@ -21,79 +21,95 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion and automated testing for Stage 4 are fully implemented. End-to-end vector retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
+> **Note:** Document ingestion (Stage 4) and text processing & chunking (Stage 5) are fully implemented with 100% automated test coverage. End-to-end vector embeddings, retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
 
 ## Stage 4 — Document Ingestion Overview
 
 Stage 4 implements robust, page-level PDF text extraction and strict dataset validation using [PyMuPDF](https://pymupdf.readthedocs.io/).
 
 ### Dataset Corpus
+- **9 documents / 85 physical pages**
+- Manifest: `data/dataset_manifest.csv`
+- Source PDFs: `data/raw/`
+- Total raw extracted characters: **500,649**
 
-The approved dataset contains **9 documents / 85 physical pages**:
-- Metadata manifest: `data/dataset_manifest.csv`
-- Raw PDF files: `data/raw/`
+## Stage 5 — Text Processing & Chunking Overview
 
-### Ingestion Contract (Page Record Structure)
+Stage 5 implements non-destructive text normalization and deterministic, page-bounded paragraph chunking (`src/processing.py` and `src/chunking.py`).
 
-Each page record is returned as a standard dictionary containing the following keys:
-- `document_id`: Unique manifest document identifier (e.g., `doc_bald_eagle`)
-- `filename`: PDF filename in `data/raw/` (e.g., `bald_eagle_factsheet.pdf`)
-- `page_number`: 1-based physical page number in the PDF (1, 2, ...)
-- `text`: Complete, uncleaned raw text extracted from the page
-- `title`: Publication title from manifest metadata
-- `publisher`: Publisher name from manifest metadata
-- `source_url`: Canonical URL source from manifest metadata
+### Processing & Normalization Rules (`src/processing.py`)
+- **Newline Normalization**: Converts `\r\n` and `\r` to standard `\n`.
+- **Horizontal Space Collapse**: Collapses multiple spaces and tabs into a single space per line (`re.sub(r"[ \t]+", " ", line).strip()`).
+- **Paragraph Preservation**: Retains double newlines (`\n\n`) to preserve paragraph boundaries while collapsing 3+ consecutive newlines (`\n{3,}` -> `\n\n`).
+- **Punctuation & Vocabulary Preservation**: Retains headings, punctuation, capitalization, scientific nomenclature (e.g. *Chelonia mydas*), numbers, and legitimate hyphenated terms ("scent-detection", "non-lead"). Automatic dehyphenation across line wraps is explicitly deferred to avoid misjoining compound terms.
+- **Header/Footer Exclusions**: Avoids destructive text deletion. Raw text block integrity is maintained across all 85 source pages.
 
-### Validation and Error Handling
+### Page-Bounded Chunking Strategy (`src/chunking.py`)
+- **Page Boundary Contract**: Every chunk belongs strictly to **exactly one physical PDF page** (`page_number`). No text or overlap crosses page boundaries.
+- **Deterministic Token Estimation**: `estimate_tokens(text) = max(1, len(text) // 4)` (~4 characters per token).
+- **Target Size**: 450 estimated tokens (~1,800 characters).
+- **Hard Maximum**: 600 estimated tokens (~2,400 characters). Zero chunks exceed this maximum.
+- **Bounded Overlap**: Up to 75 tokens (~300 characters) of trailing sentences from the preceding chunk on the *same page* are prepended to the subsequent chunk. Every new chunk is guaranteed to advance source content.
+- **Oversized Paragraph/Sentence Fallback**: Paragraphs exceeding target sizes are split into sentences, and oversized sentences are split into word groups. Uninterrupted sequences (e.g. long URLs) are sliced at character thresholds to guarantee loop termination and size compliance.
+- **Deterministic Chunk IDs**: `{document_id}_p{page_number:03d}_c{chunk_index:03d}` (1-based chunk index per page).
 
-The ingestion pipeline (`src/ingestion.py`) performs strict validation before and during extraction:
-- **Manifest Integrity**: Verifies required CSV headers exist and required metadata values are non-blank.
-- **Uniqueness**: Ensures all `document_id` and `filename` entries in the manifest are strictly unique.
-- **File & Path Safety**: Confirms all listed PDFs exist in `data/raw/` and resolve within the raw data directory.
-- **Unmanifested Files**: Rejects unexpected unmanifested `.pdf` files in `data/raw/` (ignores `.gitkeep`).
-- **Page Count Agreement**: Verifies actual PDF page counts match recorded manifest counts.
-- **Empty-Page Policy**: Explicitly fails with a `ValueError` if a physical page contains empty or whitespace-only text.
+### Chunk Record Structure
+Each generated chunk dictionary contains:
+- `chunk_id`: Deterministic unique identifier (e.g. `doc_bald_eagle_p001_c001`)
+- `document_id`: Source document identifier
+- `filename`: Source PDF filename
+- `page_number`: 1-based physical page number
+- `chunk_index`: 1-based chunk index on this page
+- `text`: Processed chunk text block
+- `title`: Publication title from manifest
+- `publisher`: Publisher from manifest
+- `source_url`: Canonical URL source from manifest
+- `estimated_token_count`: Measured token estimate
 
-### Extraction Strategy & Limitations
-
-Text is extracted using `page.get_text("text", sort=True)`, which orders text blocks top-to-bottom and left-to-right to improve reading order on multi-column layouts (e.g., PLOS ONE and Frontiers scientific articles).
-
-**Boundary Notice**: Stage 4 returns raw extracted text without modification. Normalization (whitespace cleaning, header/footer removal, dehyphenation), paragraph reconstruction, and chunking are explicitly deferred to Stage 5+.
-
-## Running Ingestion and Tests
+## Running Execution and Tests
 
 ### 1. Installation
-Install the tested dependencies:
+Install verified dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Run Corpus Ingestion
-Run full-corpus ingestion via the module entrypoint:
+### 2. Run Corpus Ingestion (Stage 4)
 ```bash
 python -m src.ingestion
 ```
-*Output Summary:* Successfully ingests 9 documents yielding 85 page records across **500,649** total extracted characters (the exact sum of `len(record["text"])` across all 85 raw page records produced by the current ingestion configuration, not a token count).
+*Output Summary:* Successfully ingests 9 documents yielding 85 page records across 500,649 raw extracted characters.
 
-### 3. Run Automated Tests
-Execute the focused `unittest` test suite:
+### 3. Run Processing & Chunking Pipeline (Stage 5)
+```bash
+python -m src.chunking
+```
+*Measured Metrics Summary:*
+- **Input Corpus:** 9 documents / 85 physical pages / 500,649 raw chars.
+- **Processed Page Text:** 373,278 characters (whitespace/padding collapsed without text loss).
+- **Total Chunks Generated:** **272 chunks** across 9 documents and 85 distinct source pages.
+- **Size Metrics:** Minimum: 62 tokens | Maximum: 573 tokens | Mean: 386.3 tokens | Median: 422.0 tokens.
+- **Integrity:** 0 empty chunks, 0 duplicate IDs, 0 hard-maximum violations (>600 tokens).
+
+### 4. Run Automated Test Suite
+Execute the full `unittest` test suite covering Stages 4 and 5:
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* 12 test cases verifying manifest loading, metadata preservation, file existence, duplicate detection, unlisted PDF rejection, page numbering contiguity, exact 9-doc / 85-page corpus yields, and controlled failure handling.
+*Coverage:* 29 automated tests verifying manifest loading, metadata preservation, unlisted file detection, 1-based page contiguity, text normalization, paragraph preservation, page-bounded chunking, overlap rules, fallback splitting, and deterministic chunk ID uniqueness.
 
 ## RAG Pipeline Architecture (Planned Workflow)
 
 ```
 Text-based PDFs (data/raw/)
   → Stage 4: Page-Level Raw Text Extraction (PyMuPDF)
-  → Stage 5: Text Processing & Chunking (Planned)
-  → Stage 6: Embeddings (Planned)
-  → Stage 7: Vector Storage (Planned)
-  → Stage 8: Retrieval System (Planned)
-  → Stage 9: RAG Generation (Planned)
+  → Stage 5: Light Text Normalization & Page-Bounded Chunking (Completed)
+  → Stage 6: Embeddings (Gemini Embedding 2, 768-dim) (Planned)
+  → Stage 7: Vector Storage (FAISS Index) (Planned)
+  → Stage 8: Retrieval System (Top-K Context) (Planned)
+  → Stage 9: RAG Generation (Gemini LLM) (Planned)
   → Stage 10: Citations & Grounding (Planned)
-  → Stage 11: Web Application (Planned)
+  → Stage 11: Web Application (Streamlit) (Planned)
 ```
 
 ## Project Structure
@@ -107,8 +123,8 @@ animal-knowledge-rag/
 ├── README.md               # Root documentation
 ├── src/
 │   ├── ingestion.py        # Stage 4: Manifest validation & PDF text extraction
-│   ├── processing.py       # Stage 5: Text processing & chunking (planned)
-│   ├── chunking.py         # Stage 5: Page/paragraph-aware chunking (planned)
+│   ├── processing.py       # Stage 5: Light text normalization
+│   ├── chunking.py         # Stage 5: Page-bounded paragraph chunking
 │   ├── embeddings.py       # Stage 6: Gemini embedding generation (planned)
 │   ├── vector_store.py     # Stage 7: FAISS index management (planned)
 │   ├── retrieval.py        # Stage 8: Top-K document retrieval (planned)
@@ -122,7 +138,9 @@ animal-knowledge-rag/
 ├── index/                  # FAISS index files (gitignored)
 ├── evaluation/             # Evaluation datasets (planned)
 └── tests/
-    └── test_ingestion.py   # Stage 4 ingestion test suite
+    ├── test_ingestion.py   # Stage 4 ingestion test suite
+    ├── test_processing.py  # Stage 5 text processing test suite
+    └── test_chunking.py    # Stage 5 chunking test suite
 ```
 
 ## Data and Licensing Policy
