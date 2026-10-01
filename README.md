@@ -11,8 +11,8 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 3 | Demo Dataset | ✅ CEO Approved | 9 PDFs / 85 physical pages with manifest metadata |
 | 4 | Document Ingestion | ✅ CEO Approved | Page-level raw text extraction & manifest validation |
 | 5 | Text Processing & Chunking | ✅ CEO Approved | Light text normalization & page-bounded paragraph chunking |
-| 6 | Embeddings | 🟡 Live Validated / Awaiting CEO Approval | 768-dim vector generation via official Google Gen AI SDK (`response.embeddings`) |
-| 7 | Vector Storage | 🔲 Planned | FAISS vector index management |
+| 6 | Embeddings | ✅ CEO Approved | 768-dim vector generation via official Google Gen AI SDK (272 chunks embedded) |
+| 7 | Vector Storage | 🟡 Live Validated / Awaiting CEO Approval | FAISS IndexFlatIP 768-dim vector index & metadata mapping |
 | 8 | Retrieval System | 🔲 Planned | Top-K context retrieval (initially K=4) |
 | 9 | RAG Generation | 🔲 Planned | Gemini answer generation with context |
 | 10 | Citations & Grounding | 🔲 Planned | Source/page citation resolution |
@@ -21,7 +21,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), and embeddings (Stage 6) are fully implemented and live validated with **50 automated unit tests passing**. End-to-end vector storage (FAISS), retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), and vector storage (Stage 7) are fully implemented and live validated with **66 automated unit tests passing**. End-to-end retrieval, Gemini answering, and Streamlit UI remain planned for future stages.
 
 ## Stage 4 — Document Ingestion Overview
 
@@ -76,15 +76,25 @@ Stage 6 implements 768-dimensional vector embedding generation using the officia
 - **Theoretical Pacing-Only Delay:** 271 × 4.2 seconds = 1,138.2 seconds, approximately 19 minutes.
 - **Observed End-to-End Runtime:** Approximately 24 minutes, based on the recorded execution evidence.
 
-### Secure Environment Configuration
-Live API execution reads `GEMINI_API_KEY` directly from the process environment:
-```bash
-export GEMINI_API_KEY="your-api-key-here"
-```
-> **Important:** Creating a `.env` file does not automatically load it. `GEMINI_API_KEY` must be configured in the environment used to launch the command.
+## Stage 7 — Vector Storage Overview
 
-If `GEMINI_API_KEY` is not set, the pipeline fails cleanly with:
-`ValueError: GEMINI_API_KEY is not set.`
+Stage 7 implements FAISS vector index construction, float32 matrix normalization, integer-ID-to-metadata mapping, and persistent storage (`src/vector_store.py`).
+
+### Vector Storage Specifications & Architecture
+- **Index Class**: `faiss.IndexFlatIP(768)` (Flat inner-product index using `METRIC_INNER_PRODUCT`).
+- **Matrix Contract**: Independent 2D `float32` C-contiguous NumPy matrix of shape `(272, 768)` converted directly from the Stage 6 embeddings artifact.
+- **Defensive L2 Normalization**: Row-wise L2-normalized using `faiss.normalize_L2(matrix)` prior to index insertion. Post-normalization row norms are verified to be ~1.0 (`Min=1.000000, Max=1.000000, Mean=1.000000`).
+- **Cosine-via-Inner-Product Contract**: Document vectors are normalized before storage. When Stage 8 normalizes query vectors, inner product matches cosine similarity.
+- **Integer ID Mapping**: FAISS IDs `0` through `271` mapped directly to chunk metadata dictionaries. Full 768-element vector array is excluded from metadata JSON to prevent redundant storage.
+- **Offline Guarantee**: Requires **zero Gemini API calls** and operates without `GEMINI_API_KEY`.
+- **Reconstruction Verification**: 100% accuracy (`272/272` vectors reconstructed via `index.reconstruct(i)` matched stored float32 matrix within numerical comparison tolerance `rtol=1e-5, atol=1e-5`).
+
+### Persistent Index Artifacts (`index/`)
+Written atomically via temporary `.tmp` files to prevent partially updated states:
+- `index/faiss.index`: Native FAISS index binary file.
+- `index/chunk_metadata.json`: Deterministic JSON metadata array.
+- `index/index_manifest.json`: Index parameters, file SHA-256 checksums, and ordered chunk IDs fingerprint (`ordered_chunk_ids_sha256`).
+- *All `index/*` files are ignored by Git via `.gitignore` (except `.gitkeep`).*
 
 ## Running Execution and Tests
 
@@ -93,28 +103,21 @@ Install verified dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+*Pinned Dependencies:* `pymupdf==1.28.2`, `google-genai==2.26.0`, `numpy==2.4.3`, `faiss-cpu==1.15.1`.
 
 ### 2. Run Automated Offline Test Suite
-Execute the full offline unit test suite covering Stages 4, 5, and 6 (requires no network calls or API keys):
+Execute the full offline unit test suite covering Stages 4, 5, 6, and 7 (requires no network calls or API keys):
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* **50 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding offline tests using SDK response types).
+*Coverage:* **66 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 16 Stage 7 vector store offline tests).
 
-### 3. Run Live Embeddings Pipeline (Requires GEMINI_API_KEY in Process Environment)
-To run a 1-chunk smoke test:
+### 3. Run Stage 7 Vector Storage CLI (100% Offline)
+To build, persist, and verify the 272-chunk FAISS vector store:
 ```bash
-python -m src.embeddings --smoke
+python -m src.vector_store
 ```
-To run a 3-chunk representative sample test (Factsheet, PLOS, Frontiers):
-```bash
-python -m src.embeddings --sample
-```
-To run full-corpus 272-chunk embedding generation:
-```bash
-python -m src.embeddings
-```
-*Output Artifact:* Saved atomically to `data/processed/chunk_embeddings.json` (gitignored).
+*Requirement:* Existing local Stage 6 artifact `data/processed/chunk_embeddings.json`. Operates 100% offline with 0 API calls.
 
 ## RAG Pipeline Architecture (Planned Workflow)
 
@@ -122,8 +125,8 @@ python -m src.embeddings
 Text-based PDFs (data/raw/)
   → Stage 4: Page-Level Raw Text Extraction (PyMuPDF) (Completed)
   → Stage 5: Light Text Normalization & Page-Bounded Chunking (Completed)
-  → Stage 6: Embeddings (Gemini Embedding 2, 768-dim) (Live Validated / Awaiting CEO Approval)
-  → Stage 7: Vector Storage (FAISS Index) (Planned)
+  → Stage 6: Embeddings (Gemini Embedding 2, 768-dim) (Completed)
+  → Stage 7: Vector Storage (FAISS IndexFlatIP) (Live Validated / Awaiting CEO Approval)
   → Stage 8: Retrieval System (Top-K Context) (Planned)
   → Stage 9: RAG Generation (Gemini LLM) (Planned)
   → Stage 10: Citations & Grounding (Planned)
@@ -135,7 +138,7 @@ Text-based PDFs (data/raw/)
 ```
 animal-knowledge-rag/
 ├── app.py                  # Streamlit application entry point (placeholder)
-├── requirements.txt        # Verified project dependencies (pymupdf==1.28.2, google-genai==2.26.0)
+├── requirements.txt        # Verified project dependencies (pymupdf, google-genai, numpy, faiss-cpu)
 ├── .env.example            # Environment variable template
 ├── .gitignore              # Git ignore rules
 ├── README.md               # Root documentation
@@ -144,7 +147,7 @@ animal-knowledge-rag/
 │   ├── processing.py       # Stage 5: Light text normalization
 │   ├── chunking.py         # Stage 5: Page-bounded paragraph chunking
 │   ├── embeddings.py       # Stage 6: 768-dim Gemini chunk embeddings
-│   ├── vector_store.py     # Stage 7: FAISS index management (planned)
+│   ├── vector_store.py     # Stage 7: FAISS IndexFlatIP index & metadata storage
 │   ├── retrieval.py        # Stage 8: Top-K document retrieval (planned)
 │   ├── generation.py       # Stage 9: Gemini answer generation (planned)
 │   └── citations.py        # Stage 10: Source/page citation resolution (planned)
@@ -159,7 +162,8 @@ animal-knowledge-rag/
     ├── test_ingestion.py   # Stage 4 ingestion test suite
     ├── test_processing.py  # Stage 5 text processing test suite
     ├── test_chunking.py    # Stage 5 chunking test suite
-    └── test_embeddings.py  # Stage 6 embedding offline test suite
+    ├── test_embeddings.py  # Stage 6 embedding offline test suite
+    └── test_vector_store.py# Stage 7 vector storage test suite
 ```
 
 ## Data and Licensing Policy

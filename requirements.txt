@@ -1,2 +1,4 @@
 pymupdf==1.28.2
 google-genai==2.26.0
+numpy==2.4.3
+faiss-cpu==1.15.1
