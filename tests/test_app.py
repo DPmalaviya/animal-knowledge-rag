@@ -294,6 +294,26 @@ class TestAppStage11(unittest.TestCase):
         self.assertNotIn("/path/to/private/file", err_val)
         self.assertEqual(err_val, "Answer could not be generated right now; please try again.")
 
+    def test_14_apptest_submission_preserves_exact_untrimmed_question(self) -> None:
+        raw_question = "  How does lead affect bald eagles?  "
+        mock_backend = MagicMock(return_value=create_synthetic_supported_result(question=raw_question))
+
+        at = AppTest.from_function(_run_test_app, args=(mock_backend,), default_timeout=5).run()
+        at.text_area[0].input(raw_question)
+        at.button[0].click().run()
+
+        self.assertFalse(at.exception)
+        mock_backend.assert_called_once_with(
+            question=raw_question,
+            top_k=4,
+            index_dir="index",
+        )
+        # Verify kwargs passed to mock_backend
+        _, kwargs = mock_backend.call_args
+        self.assertEqual(kwargs["question"], raw_question)
+        self.assertEqual(kwargs["top_k"], 4)
+        self.assertEqual(at.session_state["submitted_question"], raw_question)
+
 
 if __name__ == "__main__":
     unittest.main()

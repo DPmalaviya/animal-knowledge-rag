@@ -187,8 +187,8 @@ def render_app(answer_fn: Callable[..., Dict[str, Any]] = answer_with_citations)
         submit_button = st.form_submit_button(label="Ask Assistant", type="primary")
 
     if submit_button:
-        cleaned_query = user_query.strip() if user_query else ""
-        if not cleaned_query:
+        is_empty = not user_query or not user_query.strip()
+        if is_empty:
             st.warning("Please enter a question.")
             st.session_state["latest_result"] = None
             st.session_state["submitted_question"] = None
@@ -196,13 +196,13 @@ def render_app(answer_fn: Callable[..., Dict[str, Any]] = answer_with_citations)
         else:
             # Clear previous result state on new submission
             st.session_state["latest_result"] = None
-            st.session_state["submitted_question"] = cleaned_query
+            st.session_state["submitted_question"] = user_query
             st.session_state["error_message"] = None
 
             with st.spinner("Retrieving context and generating grounded answer..."):
                 try:
                     res = answer_fn(
-                        question=cleaned_query,
+                        question=user_query,
                         top_k=FIXED_TOP_K,
                         index_dir=DEFAULT_INDEX_DIR,
                     )

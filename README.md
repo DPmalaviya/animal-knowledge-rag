@@ -21,7 +21,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), retrieval system (Stage 8), grounded RAG generation (Stage 9), citation resolution (Stage 10), and web application (Stage 11) are fully implemented and verified with **187 automated unit tests passing**. Streamlit UI deployment (Stage 12) remains planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), retrieval system (Stage 8), grounded RAG generation (Stage 9), citation resolution (Stage 10), and web application (Stage 11) are fully implemented and verified with **188 automated unit tests passing**. Streamlit UI deployment (Stage 12) remains planned for future stages.
 
 
 ## Stage 4 — Document Ingestion Overview
@@ -173,7 +173,7 @@ Execute the full offline unit test suite covering Stages 4, 5, 6, 7, 8, 9, 10, a
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* **187 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 24 Stage 8 retrieval, 20 Stage 9 generation, 58 Stage 10 citation offline tests, 13 Stage 11 web app tests).
+*Coverage:* **188 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 24 Stage 8 retrieval, 20 Stage 9 generation, 58 Stage 10 citation offline tests, 14 Stage 11 web app tests).
 
 ### 3. Launch Streamlit Web Application (Requires GEMINI_API_KEY)
 To run the web interface locally:
