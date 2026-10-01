@@ -8,18 +8,28 @@ _QUOTA_TEXT_MARKERS = (
     "quota",
     "rate limit",
     "rate-limit",
+    "rate_limit",
     "too many requests",
     "resource_exhausted",
+    "resource-exhausted",
     "resource exhausted",
+    "resourceexhausted",
 )
 _DAILY_TEXT_MARKERS = (
-    "daily quota",
-    "daily request limit",
-    "daily requests",
+    "daily",
     "per day",
     "per-day",
     "per_day",
     "perday",
+)
+_DAILY_CONTEXT_MARKERS = (
+    "quota",
+    "limit",
+    "exceeded",
+    "resource_exhausted",
+    "resource-exhausted",
+    "resource exhausted",
+    "resourceexhausted",
 )
 
 
@@ -55,6 +65,8 @@ def is_quota_error(error: BaseException) -> bool:
 def is_daily_quota_error(error: BaseException) -> bool:
     """Return whether a quota failure represents a non-recoverable daily limit."""
     text = _error_text(error)
-    return _KNOWN_DAILY_QUOTA_ID in text or any(
-        marker in text for marker in _DAILY_TEXT_MARKERS
+    if _KNOWN_DAILY_QUOTA_ID in text:
+        return True
+    return any(marker in text for marker in _DAILY_TEXT_MARKERS) and any(
+        marker in text for marker in _DAILY_CONTEXT_MARKERS
     )

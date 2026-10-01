@@ -33,6 +33,15 @@ class TestProviderErrors(unittest.TestCase):
         self.assertTrue(is_quota_error(error))
         self.assertFalse(is_daily_quota_error(error))
 
+    def test_resource_exhausted_hyphenated_is_quota(self):
+        self.assertTrue(is_quota_error(ProviderError("resource-exhausted")))
+
+    def test_rate_limit_underscored_is_quota(self):
+        self.assertTrue(is_quota_error(ProviderError("rate_limit")))
+
+    def test_resource_exhausted_compact_is_quota(self):
+        self.assertTrue(is_quota_error(ProviderError("ResourceExhausted")))
+
     def test_quota_exceeded_is_quota_but_not_daily(self):
         error = ProviderError("Quota exceeded for this request")
 
@@ -84,6 +93,16 @@ class TestProviderErrors(unittest.TestCase):
 
     def test_unrelated_daily_text_is_not_daily_quota(self):
         error = ValueError("The daily animal report was malformed")
+
+        self.assertFalse(is_daily_quota_error(error))
+
+    def test_per_day_maintenance_text_is_not_daily_quota(self):
+        error = ValueError("Scheduled maintenance occurs once per day")
+
+        self.assertFalse(is_daily_quota_error(error))
+
+    def test_daily_requests_logging_text_is_not_daily_quota(self):
+        error = ValueError("Daily requests are logged")
 
         self.assertFalse(is_daily_quota_error(error))
 
