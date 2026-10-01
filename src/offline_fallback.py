@@ -144,7 +144,7 @@ def build_extractive_rag_result(
     if not query_terms:
         return None
     minimum_distinct_overlap = (
-        1 if len(query_terms) <= 2 else max(2, math.ceil(len(query_terms) / 2))
+        1 if len(query_terms) == 1 else max(2, math.ceil(len(query_terms) / 2))
     )
 
     candidates: List[Tuple[int, int, int, str, str]] = []

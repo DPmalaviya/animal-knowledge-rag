@@ -293,7 +293,7 @@ class TestExtractiveAnswer(unittest.TestCase):
                 text="Eagle eagle has greater frequency. Eagle is later.",
             ),
         ]
-        result = build_extractive_rag_result("What about eagle?", records)
+        result = build_extractive_rag_result("eagle", records)
         self.assertEqual(
             result["answer"],
             "Eagle eagle has greater frequency. [C2]\n"
@@ -307,6 +307,18 @@ class TestExtractiveAnswer(unittest.TestCase):
         self.assertTrue(result["is_fallback"])
         self.assertEqual(result["raw_answer"], INSUFFICIENT_CONTEXT_FALLBACK)
 
+    def test_two_term_question_requires_both_terms_for_extractive_support(self):
+        records = [self.ranked_record(0, text="Eagles ingest lead fragments.")]
+        result = resolve_extractive_result("Eagles habitat?", records)
+        self.assertTrue(result["is_fallback"])
+        self.assertEqual(result["raw_answer"], INSUFFICIENT_CONTEXT_FALLBACK)
+
+    def test_one_term_question_remains_extractive_compatible(self):
+        records = [self.ranked_record(0, text="Eagles ingest lead fragments.")]
+        result = resolve_extractive_result("Eagles?", records)
+        self.assertFalse(result["is_fallback"])
+        self.assertIn("Eagles ingest lead fragments.", result["raw_answer"])
+
     def test_multi_term_same_topic_without_answer_falls_back(self):
         records = [
             self.ranked_record(0, text="Bald eagles ingest lead fragments.")
@@ -316,7 +328,7 @@ class TestExtractiveAnswer(unittest.TestCase):
         )
         self.assertTrue(result["is_fallback"])
 
-    def test_missing_negation_and_key_terms_conservatively_falls_back(self):
+    def test_missing_key_terms_conservatively_falls_back(self):
         records = [self.ranked_record(0, text="Bald eagles have broad wings.")]
         result = resolve_extractive_result(
             "Do bald eagles not ingest lead?", records
@@ -487,8 +499,8 @@ class TestExtractiveAnswer(unittest.TestCase):
                 side_effect=AssertionError("network generation must remain offline"),
             ) as generate_answer,
         ):
-            supported_result = resolve_extractive_result("eagle lead", supported)
-            fallback_result = resolve_extractive_result("eagle lead", [])
+            supported_result = resolve_extractive_result("eagles lead", supported)
+            fallback_result = resolve_extractive_result("eagles lead", [])
 
         self.assertFalse(supported_result["is_fallback"])
         self.assertTrue(fallback_result["is_fallback"])
