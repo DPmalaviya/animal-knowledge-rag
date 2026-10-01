@@ -21,7 +21,7 @@ A portfolio/demo application designed to answer animal-related questions using p
 | 13 | Portfolio Integration | 🔲 Planned | Documentation & showcase materials |
 | 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
 
-> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), retrieval system (Stage 8), grounded RAG generation (Stage 9), and citation resolution (Stage 10) are fully implemented and verified with **164 automated unit tests passing**. Streamlit UI (Stage 11) remains planned for future stages.
+> **Note:** Document ingestion (Stage 4), text processing & chunking (Stage 5), embeddings (Stage 6), vector storage (Stage 7), retrieval system (Stage 8), grounded RAG generation (Stage 9), and citation resolution (Stage 10) are fully implemented and verified with **174 automated unit tests passing**. Streamlit UI (Stage 11) remains planned for future stages.
 
 
 ## Stage 4 — Document Ingestion Overview
@@ -159,7 +159,7 @@ Execute the full offline unit test suite covering Stages 4, 5, 6, 7, 8, 9, and 1
 ```bash
 python -m unittest discover tests
 ```
-*Coverage:* **164 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 24 Stage 8 retrieval, 20 Stage 9 generation, 48 Stage 10 citation offline tests).
+*Coverage:* **174 automated tests passing** (12 Stage 4 ingestion, 8 Stage 5 processing, 11 Stage 5 chunking, 19 Stage 6 embedding, 22 Stage 7 vector store, 24 Stage 8 retrieval, 20 Stage 9 generation, 58 Stage 10 citation offline tests).
 
 ### 3. Run Stage 8 Retrieval CLI (Requires GEMINI_API_KEY)
 To execute live Top-K semantic retrieval for a user question:

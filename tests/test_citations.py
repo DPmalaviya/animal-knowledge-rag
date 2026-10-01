@@ -477,5 +477,53 @@ class TestCitationsStage10(unittest.TestCase):
         self.assertIn("non-finite", str(ctx.exception))
 
 
+    def test_mixed_valid_and_malformed_standalone_c_rejected(self) -> None:
+        """Verify presence of a valid citation does not bypass rejection of malformed [C]."""
+        rag_res = create_synthetic_rag_result(answer="Claim [C1]. Bad [C].")
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rag_citations(rag_res)
+        self.assertIn("Malformed controlled citation marker detected", str(ctx.exception))
+
+    def test_mixed_valid_and_malformed_c_minus_one_rejected(self) -> None:
+        """Verify presence of a valid citation does not bypass rejection of malformed [C-1]."""
+        rag_res = create_synthetic_rag_result(answer="Claim [C1]. Bad [C-1].")
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rag_citations(rag_res)
+        self.assertIn("Malformed controlled citation marker detected", str(ctx.exception))
+
+    def test_mixed_valid_and_malformed_c_space_one_rejected(self) -> None:
+        """Verify presence of a valid citation does not bypass rejection of malformed [C 1]."""
+        rag_res = create_synthetic_rag_result(answer="Claim [C1]. Bad [C 1].")
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rag_citations(rag_res)
+        self.assertIn("Malformed controlled citation marker detected", str(ctx.exception))
+
+    def test_mixed_valid_and_malformed_c_plus_one_rejected(self) -> None:
+        """Verify presence of a valid citation does not bypass rejection of malformed [C+1]."""
+        rag_res = create_synthetic_rag_result(answer="Claim [C1]. Bad [C+1].")
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rag_citations(rag_res)
+        self.assertIn("Malformed controlled citation marker detected", str(ctx.exception))
+
+    def test_mixed_valid_and_malformed_lowercase_c_rejected(self) -> None:
+        """Verify presence of a valid citation does not bypass rejection of malformed [c]."""
+        rag_res = create_synthetic_rag_result(answer="Claim [C1]. Bad [c].")
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rag_citations(rag_res)
+        self.assertIn("Malformed controlled citation marker detected", str(ctx.exception))
+
+    def test_ordinary_bracket_text_preservation_and_rendering(self) -> None:
+        """Assert successful resolution and exact preservation of ordinary bracket text."""
+        cases = [
+            ("Species is protected [CITES Appendix I]. Claim [C1].", "Species is protected [CITES Appendix I]. Claim (bald_eagle_lead_exposure.pdf, p. 1)."),
+            ("[Conservation status] Claim [C1].", "[Conservation status] Claim (bald_eagle_lead_exposure.pdf, p. 1)."),
+            ("[see discussion above] Claim [C1].", "[see discussion above] Claim (bald_eagle_lead_exposure.pdf, p. 1)."),
+        ]
+        for raw, expected in cases:
+            rag_res = create_synthetic_rag_result(answer=raw)
+            res = resolve_rag_citations(rag_res)
+            self.assertEqual(res["rendered_answer"], expected)
+
+
 if __name__ == "__main__":
     unittest.main()

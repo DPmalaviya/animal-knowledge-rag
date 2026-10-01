@@ -151,20 +151,52 @@ def parse_citation_groups(answer: str) -> List[Tuple[int, int, str, List[str]]]:
         valid_matches.append((start, end, raw_text, c_ids))
         valid_spans.add((start, end))
 
-    # Scan for malformed numeric C-ID citation attempts inside brackets [ ... ]
-    # Detects numeric citation attempts (containing c/C followed by digits) that fail strict grammar
-    # without treating ordinary C-prefixed text (e.g. [CITES Appendix I], [Conservation status]) as citations.
+    # Scan for malformed controlled citation attempts inside brackets [ ... ]
     for match in re.finditer(r"\[([^\]]+)\]", answer):
         span = match.span()
         if span not in valid_spans:
             inner_text = match.group(1).strip()
-            # If the bracket content contains numeric C-ID citation attempts (e.g. c1, C0, C01, C1; C2, C1 C2, C1,)
-            if re.search(r"\b[cC]\d+\b", inner_text) or re.search(r"[cC]\d+", inner_text):
+            if _is_malformed_citation_marker(inner_text):
                 raise ValueError(
                     f"Malformed controlled citation marker detected: '{match.group(0)}'."
                 )
 
     return valid_matches
+
+
+def _is_malformed_citation_marker(inner_text: str) -> bool:
+    """Check if bracketed text [ ... ] is a malformed controlled citation attempt.
+
+    Identifies standalone C/c markers ([C], [c]), invalid C-ID syntax ([C0], [C01], [c1], [C-1], [C+1], [C 1]),
+    or malformed delimiter groups ([C1; C2], [C1 C2], [C1,]), while preserving ordinary bracket text
+    (e.g., [CITES Appendix I], [Conservation status], [see discussion above]).
+    """
+    text = inner_text.strip()
+    if not text:
+        return False
+
+    # Standalone C or c: [C], [c]
+    if text in ("C", "c"):
+        return True
+
+    # C or c followed by whitespace/sign/nothing/invalid syntax: [C-1], [C+1], [C 1], [c 1], [c-1], [c+1], [c1], [C0], [C01]
+    if re.fullmatch(r"[cC]\s*[-+]?\s*\d+", text):
+        return True
+
+    # Check tokens split by space, comma, semicolon
+    tokens = [t.strip() for t in re.split(r"[\s;,]+", text) if t.strip()]
+    for token in tokens:
+        if token in ("C", "c"):
+            return True
+        if re.fullmatch(r"[cC]\s*[-+]?\s*\d+", token):
+            return True
+
+    # Any C/c followed by digits (e.g. C1;, C01, c1)
+    if re.search(r"\b[cC]\d+\b", text) or re.search(r"[cC]\d+", text):
+        return True
+
+    return False
+
 
 
 
