@@ -5,7 +5,7 @@
 [![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python)](requirements.txt)
 [![Tests: 188 Passing](https://img.shields.io/badge/Tests-188%20Passing-success?style=for-the-badge)](tests/)
 
-A production-grade Retrieval-Augmented Generation (RAG) system built to answer animal science questions using a curated demo dataset of public research documents. Features semantic vector retrieval, grounded answer generation, deterministic citation resolution, and a clean Streamlit web application.
+An end-to-end Retrieval-Augmented Generation (RAG) system built to answer animal science questions using a curated demo dataset of public research documents. Features semantic vector retrieval, grounded answer generation, deterministic citation resolution, and a clean Streamlit web application.
 
 🚀 **[Try the Live Web Application](https://animal-knowledge-rag-bpnfy8iqoxqrbcyeasica2.streamlit.app/)**
 
@@ -28,15 +28,15 @@ A production-grade Retrieval-Augmented Generation (RAG) system built to answer a
 | 11 | Web Application | ✅ CEO Approved | Streamlit web interface for grounded QA with safe citations |
 | 12 | Deployment | ✅ CEO Approved | Streamlit Community Cloud public deployment & verification |
 | 13 | Portfolio Integration | 🟡 Needs CEO Review | Case study, portfolio copy, and documentation refactoring |
-| 14 | Evaluation & Interview Readiness | 🔲 Planned | Golden QA evaluation & walkthrough prep |
+| 14 | Evaluation & Technical Interview Prep | 🔲 Planned | Stage 14 will address formal retrieval and answer evaluation and technical interview preparation; its evaluation design remains to be approved. |
 
-> **Note:** Stages 1 through 12 are fully implemented and CEO-approved. Stage 13 portfolio documentation is complete and awaiting final CEO review with **188 automated unit tests passing**. Stage 14 evaluation remains planned.
+> **Note:** Stages 1 through 12 are fully implemented and CEO-approved. Stage 13 portfolio documentation is complete and awaiting final CEO review with **188 automated unit tests passing**. Stage 14 will address formal retrieval and answer evaluation and technical interview preparation; its evaluation design remains to be approved.
 
 ---
 
 ## Key Features
 
-- **Grounded RAG Generation:** Grounded answer generation using `gemini-3.8-flash` with low thinking level and strict prompt anti-hallucination instructions.
+- **Grounded RAG Generation:** Grounded answer generation using `gemini-3.8-flash` with low thinking level and strict context-grounding instructions.
 - **768-dim Semantic Vector Storage:** Prebuilt FAISS `IndexFlatIP` storing normalized 768-dimensional `gemini-embedding-2` vectors for 272 document chunks.
 - **Deterministic Citation Trust Boundary:** Model outputs controlled source IDs (`[C1]`, `[C2]`), while application code deterministically validates grammar, looks up trusted metadata, and renders inline filename/page references.
 - **Fail-Closed Fallback Policy:** Emits exact fallback sentence (`"I don't have enough information in the provided sources to answer that question."`) when context is insufficient.
@@ -73,12 +73,12 @@ graph TD
 
 ## Grounding & Citation Trust Boundary
 
-A core principle of this project is that **Gemini output is NOT authoritative citation metadata**:
+A central trust boundary of this project is that **Gemini output is NOT authoritative citation metadata**:
 
 1. **Controlled Identifiers:** Retrieved chunks are labeled `[C1]` through `[C4]`.
 2. **Deterministic Resolution:** Stage 10 Python code (`src/citations.py`) parses bracketed markers against strict grammar rules, verifies canonical C-ID existence in the Stage 9 `source_map`, extracts filenames and physical page numbers, and renders user-facing references (e.g. `(bald_eagle_lead_exposure.pdf, p. 1)`).
 3. **Fail-Closed Validation:** Malformed syntax (`[c1]`, `[C0]`, `[C1; C2]`), unknown IDs, or supported answers missing citations are immediately rejected.
-4. **Entailment Limitation:** Citation provenance validation verifies syntactic structure, canonical ID existence, and metadata lookup integrity—it is not the same as verifying that every cited passage semantically supports every answer claim. Formal answer-quality evaluation remains planned for Stage 14.
+4. **Entailment Limitation:** Citation provenance validation verifies syntactic marker structure, canonical ID existence, and metadata lookup integrity—it does not establish semantic entailment or guarantee factual correctness. Formal answer-quality evaluation remains planned for Stage 14.
 
 ---
 
@@ -95,12 +95,16 @@ A core principle of this project is that **Gemini output is NOT authoritative ci
 
 ## Curated Demo Corpus
 
-The system operates over a curated dataset of **9 peer-reviewed & public research PDFs** (85 physical pages, 272 chunks):
-- **Bald Eagles:** Lead exposure from big game hunting (`bald_eagle_lead_exposure.pdf`) & FWS factsheet (`bald_eagle_factsheet.pdf`).
-- **Monarch Butterflies:** Flight performance (`monarch_flight_performance.pdf`) & factsheet (`monarch_butterfly_factsheet.pdf`).
-- **Humpback Whales:** NOAA factsheet (`humpback_whale_factsheet.pdf`) & migration study (`humpback_whale_migration.pdf`).
-- **Green Sea Turtles:** NOAA factsheet (`green_sea_turtle_factsheet.pdf`) & nesting study (`green_sea_turtle_nesting.pdf`).
-- **African Elephants:** Reintegration and stress physiology (`african_elephant_reintegration.pdf`).
+The system operates over a curated 9-document corpus combining government factsheets and peer-reviewed open-access research (85 physical pages, 272 chunks):
+- `bald_eagle_factsheet.pdf`
+- `bald_eagle_lead_exposure.pdf`
+- `monarch_butterfly_factsheet.pdf`
+- `monarch_flight_performance.pdf`
+- `monarch_migration_mortality.pdf`
+- `humpback_whale_foraging.pdf`
+- `sea_turtle_foraging.pdf`
+- `sea_turtle_nest_monitoring.pdf`
+- `african_elephant_reintegration.pdf`
 
 Full details and Creative Commons attribution are documented in [data/README.md](data/README.md) and [data/dataset_manifest.csv](data/dataset_manifest.csv).
 
@@ -205,7 +209,7 @@ animal-knowledge-rag/
 - **Text-Based PDFs Only:** No OCR processing for image-only PDFs.
 - **Single-Turn QA:** No conversational memory or multi-turn chat history.
 - **Fixed Retrieval Baseline:** Dense Top-4 retrieval without BM25 hybrid search or reranking.
-- **Syntactic Citation Verification:** Provenance checking verifies syntactic marker structure and metadata lookup; formal semantic entailment evaluation remains planned for Stage 14.
+- **Syntactic Citation Verification:** Citation provenance validation verifies syntactic marker structure and metadata lookup; formal semantic entailment evaluation remains planned for Stage 14.
 
 ---
 

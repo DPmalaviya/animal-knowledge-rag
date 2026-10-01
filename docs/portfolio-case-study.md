@@ -2,13 +2,13 @@
 
 ## Executive Summary
 
-The **Animal Knowledge RAG Assistant** is a production-grade Retrieval-Augmented Generation (RAG) system built to provide factually grounded answers to complex animal biology, ecology, and conservation questions. Operating over a curated 9-document / 85-physical-page scientific PDF corpus, the application couples a 768-dimensional dense vector store with Google Gemini 3.8 Flash generation and a deterministic Stage 10 citation parser.
+The **Animal Knowledge RAG Assistant** is a portfolio-scale Retrieval-Augmented Generation (RAG) system built to provide factually grounded answers to animal biology, ecology, and conservation questions. Operating over a curated 9-document corpus combining government factsheets and peer-reviewed open-access research (85 physical pages / 272 chunks), the application couples a 768-dimensional dense vector store with Google Gemini 3.8 Flash generation and a deterministic Stage 10 citation parser.
 
 ## Problem Statement & Constraints
 
-Large Language Models (LLMs) frequently hallucinate or fabricate facts when answering domain-specific scientific queries. In biological and ecological research, unverified claims can misrepresent species conservation statuses, chemical toxicity mechanisms, or physiological indicators.
+Large Language Models (LLMs) can generate ungrounded statements or fabricate facts when answering domain-specific scientific queries. In biological and ecological research, unverified claims can misrepresent species conservation statuses, chemical toxicity mechanisms, or physiological indicators.
 
-To build a reliable system, the architecture operates under four strict constraints:
+To build a grounded retrieval system, the architecture operates under four strict constraints:
 1. **Zero External Knowledge:** The model must answer using *only* retrieved text chunks.
 2. **Deterministic Citation Provenance:** Gemini output is treated as untrusted data; application code—not the LLM—resolves and formats citation metadata.
 3. **Exact Fallback Contract:** If context is insufficient, the system must emit an exact fallback message rather than speculating.
@@ -57,7 +57,7 @@ The retrieval system delivers relevant context chunks to the generation model wh
 
 ## Grounding & Citation Trust Boundary
 
-A fundamental innovation of this application is the **strict separation between LLM generation and citation authority**:
+A central trust boundary of this application is the **strict separation between LLM generation and citation authority**:
 
 - **The LLM is NOT authoritative for metadata:** Gemini outputs natural-language text interspersed with controlled identifiers (`[C1]`, `[C2]`). It is prohibited from generating footnotes, file paths, or bibliography sections.
 - **Deterministic Application Validation:** Stage 10 Python code (`src/citations.py`) intercepts the raw model answer:
@@ -67,7 +67,7 @@ A fundamental innovation of this application is the **strict separation between 
   - Looks up verified filenames, physical page numbers, titles, publishers, and source URLs from trusted retrieval metadata.
   - Formats inline user-facing citations (e.g. `(bald_eagle_lead_exposure.pdf, p. 1)`).
 - **Fail-Closed Safeguards:** If an answer contains invalid citations, unmapped source IDs, or supported claims without markers, the answer is withheld and a user-safe error message is returned.
-- **Semantic Entailment Limitation:** Citation provenance validation verifies syntactic structure, canonical ID existence, and metadata lookup integrity—it does not guarantee that every cited passage semantically supports every answer claim. Formal answer-quality evaluation remains planned for Stage 14.
+- **Semantic Entailment Limitation:** Citation provenance validation verifies syntactic marker structure, canonical ID existence, and metadata lookup integrity—it does not establish semantic entailment or guarantee factual correctness. Formal answer-quality evaluation remains planned for Stage 14.
 
 ## Engineering Tradeoffs
 
@@ -92,7 +92,7 @@ All 188 tests run 100% offline without live API keys or network requests.
 
 ## Deployment & Public Access
 
-The web application is deployed on **Streamlit Community Cloud** (Python 3.13):
+The web application is publicly deployed on **Streamlit Community Cloud** (Python 3.13):
 - **Live Demo URL:** https://animal-knowledge-rag-bpnfy8iqoxqrbcyeasica2.streamlit.app/
 - **Secret Management:** Process environment `GEMINI_API_KEY` configured securely via Streamlit Cloud platform secrets (`st.secrets`).
 
@@ -100,13 +100,13 @@ The web application is deployed on **Streamlit Community Cloud** (Python 3.13):
 
 1. **SDK Response Contracts Change:** Relying on precise field access (e.g. `response.embeddings[0].values`) avoids subtle runtime type failures.
 2. **Mocking Must Exercise Real Code:** Using Streamlit's native `AppTest` with injected backends proved UI behavior, form bounds, and error mapping without mocking internal framework structures.
-3. **Citation Formatting $\neq$ Entailment:** Syntactic marker validation enforces provenance hygiene, but formal semantic entailment requires evaluation datasets (planned for Stage 14).
+3. **Citation Formatting $\neq$ Entailment:** Syntactic marker validation enforces provenance hygiene, but validating semantic entailment requires formal evaluation workflows.
 
 ## Project Limitations & Future Roadmap
 
-- **Curated Dataset Scope:** Operating over a focused 9-document demo corpus (85 physical pages / 272 chunks).
+- **Curated Dataset Scope:** Operating over a focused 9-document demo corpus combining government factsheets and peer-reviewed open-access research (85 physical pages / 272 chunks).
 - **Text-Based Processing:** PDFs must contain extractable text; image-based OCR is not currently implemented.
 - **Single-Turn Experience:** System answers individual user questions without multi-turn conversational memory.
 - **Fixed Retrieval Baseline:** Dense Top-4 retrieval without BM25 hybrid search or reranking.
-- **Syntactic Citation Verification:** Provenance checking verifies syntactic marker structure and metadata lookup; formal semantic entailment evaluation remains planned for Stage 14.
-- **Upcoming Stage 14:** Systematic answer-quality, faithfulness, and semantic entailment benchmarking over a golden QA dataset will be conducted in Stage 14.
+- **Syntactic Citation Verification:** Citation provenance validation verifies syntactic marker structure and metadata lookup; formal semantic entailment evaluation remains planned for Stage 14.
+- **Upcoming Stage 14:** Stage 14 will address formal retrieval and answer evaluation and technical interview preparation; its evaluation design remains to be approved.
