@@ -207,8 +207,8 @@ Text-based PDFs (data/raw/)
 
 ```
 animal-knowledge-rag/
-├── app.py                  # Streamlit application entry point (placeholder)
-├── requirements.txt        # Verified project dependencies (pymupdf, google-genai, numpy, faiss-cpu)
+├── app.py                  # Stage 11 Streamlit web application
+├── requirements.txt        # Verified project dependencies (pymupdf, google-genai, numpy, faiss-cpu, streamlit)
 ├── .env.example            # Environment variable template
 ├── .gitignore              # Git ignore rules
 ├── README.md               # Root documentation
@@ -236,7 +236,8 @@ animal-knowledge-rag/
     ├── test_vector_store.py# Stage 7 vector storage test suite
     ├── test_retrieval.py   # Stage 8 retrieval test suite
     ├── test_generation.py  # Stage 9 generation offline test suite
-    └── test_citations.py   # Stage 10 citation offline test suite
+    ├── test_citations.py   # Stage 10 citation offline test suite
+    └── test_app.py         # Stage 11 Streamlit/AppTest suite
 ```
 
 
