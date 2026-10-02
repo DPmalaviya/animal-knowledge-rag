@@ -4,6 +4,8 @@ import copy
 import hashlib
 import json
 import math
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -671,6 +673,80 @@ class TestHybridOrchestration(unittest.TestCase):
 
         self.assertIs(caught.exception, error)
         retrieve_locally.assert_not_called()
+
+    def test_retrieval_validation_error_with_quota_text_propagates_without_local_fallback(self):
+        error = ValueError("index at quota-index is corrupt")
+        with (
+            patch("src.offline_fallback.retrieve", side_effect=error),
+            patch("src.offline_fallback.retrieve_locally") as retrieve_locally,
+        ):
+            with self.assertRaises(ValueError) as caught:
+                answer_with_free_fallback(self.question, top_k=1)
+
+        self.assertIs(caught.exception, error)
+        retrieve_locally.assert_not_called()
+
+    def test_clientless_path_lazily_creates_one_shared_client_and_forwards_generation_retries(self):
+        created_client = MagicMock()
+        retrieval_clients = []
+
+        def retrieve_with_client(**kwargs):
+            retrieval_clients.append(kwargs["client"])
+            # Retrieving through the proxy is what materializes the real client,
+            # after retrieve's own prerequisite checks have completed.
+            kwargs["client"].models
+            return self.semantic_records
+
+        with (
+            patch(
+                "src.offline_fallback.retrieve", side_effect=retrieve_with_client
+            ) as retrieve,
+            patch(
+                "src.offline_fallback.create_genai_client", return_value=created_client
+            ) as create_client,
+            patch(
+                "src.offline_fallback.generate_grounded_answer",
+                return_value={
+                    "answer": "Bald eagles ingest lead fragments from ammunition. [C1]",
+                    "usage_metadata": None,
+                },
+            ) as generate,
+        ):
+            answer_with_free_fallback(
+                self.question,
+                top_k=1,
+                api_key="test-key",
+                max_retries=7,
+                retry_delay=0.25,
+            )
+
+        self.assertIs(retrieval_clients[0], generate.call_args.kwargs["client"])
+        create_client.assert_called_once_with(api_key="test-key")
+        retrieve.assert_called_once()
+        self.assertEqual(generate.call_args.kwargs["max_retries"], 7)
+        self.assertEqual(generate.call_args.kwargs["retry_delay"], 0.25)
+
+
+    def test_lexical_import_does_not_load_hybrid_dependencies(self):
+        script = """
+import builtins
+blocked = {\"src.retrieval\", \"src.embeddings\", \"src.generation\", \"src.citations\", \"faiss\", \"numpy\", \"google\"}
+original_import = builtins.__import__
+def guarded_import(name, *args, **kwargs):
+    if name in blocked or name.split(\".\")[0] in {\"faiss\", \"numpy\", \"google\"}:
+        raise ImportError(f\"blocked dependency: {name}\")
+    return original_import(name, *args, **kwargs)
+builtins.__import__ = guarded_import
+from src.offline_fallback import tokenize_meaningful
+assert tokenize_meaningful(\"Bald eagles and lead\") == [\"bald\", \"eagles\", \"lead\"]
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_non_quota_generation_error_propagates_without_local_fallback(self):
         error = RuntimeError("authentication failed")

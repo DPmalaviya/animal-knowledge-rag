@@ -8,16 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.citations import resolve_rag_citations
-from src.embeddings import create_genai_client
-from src.generation import (
-    DEFAULT_GENERATION_MODEL,
-    build_generation_prompt,
-    build_source_map,
-    generate_grounded_answer,
-)
-from src.provider_errors import is_quota_error
-from src.retrieval import retrieve
+DEFAULT_GENERATION_MODEL = "gemini-3.8-flash"
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
@@ -85,6 +76,87 @@ _REQUIRED_FIELDS = frozenset(
         "embedding_dimension",
     }
 )
+
+
+def retrieve(*args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
+    """Lazily invoke semantic retrieval so lexical use has no SDK dependencies."""
+    from src.retrieval import retrieve as semantic_retrieve
+
+    return semantic_retrieve(*args, **kwargs)
+
+
+def create_genai_client(*args: Any, **kwargs: Any) -> Any:
+    """Lazily create a Gemini client when hybrid answering requires one."""
+    from src.embeddings import create_genai_client as create_client
+
+    return create_client(*args, **kwargs)
+
+
+def build_source_map(retrieval_records: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Lazily build the generation source map."""
+    from src.generation import build_source_map as build_map
+
+    return build_map(retrieval_records)
+
+
+def build_generation_prompt(question: str, source_map: Dict[str, Dict[str, Any]]) -> str:
+    """Lazily build the Gemini generation prompt."""
+    from src.generation import build_generation_prompt as build_prompt
+
+    return build_prompt(question, source_map)
+
+
+def generate_grounded_answer(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+    """Lazily invoke Gemini generation."""
+    from src.generation import generate_grounded_answer as generate_answer
+
+    return generate_answer(*args, **kwargs)
+
+
+def resolve_rag_citations(rag_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Lazily resolve citations for a hybrid answer."""
+    from src.citations import resolve_rag_citations as resolve_citations
+
+    return resolve_citations(rag_result)
+
+
+class _LazyGenaiClient:
+    """Create the shared Gemini client only when retrieval reaches its API call."""
+
+    def __init__(self, api_key: Optional[str]) -> None:
+        self._api_key = api_key
+        self._client: Optional[Any] = None
+
+    def __bool__(self) -> bool:
+        return True
+
+    def __getattr__(self, name: str) -> Any:
+        if self._client is None:
+            self._client = create_genai_client(api_key=self._api_key)
+        return getattr(self._client, name)
+
+
+def _is_structured_provider_quota_error(error: BaseException) -> bool:
+    """Return true only for a provider error carrying HTTP status 429.
+
+    The semantic and generation layers preserve the provider exception as an
+    explicit cause when they wrap a daily-quota failure, so inspect that chain
+    without treating arbitrary validation text as quota evidence.
+    """
+    current: Optional[BaseException] = error
+    seen = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        for attribute in ("code", "status_code"):
+            value = getattr(current, attribute, None)
+            if (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and value == 429
+            ):
+                return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def tokenize_meaningful(text: str) -> List[str]:
@@ -231,23 +303,23 @@ def answer_with_free_fallback(
     retry_delay: float = 1.0,
 ) -> Dict[str, Any]:
     """Return a Gemini answer, falling back to local extraction only on quota errors."""
+    active_client = client if client is not None else _LazyGenaiClient(api_key)
     try:
         retrieval_records = retrieve(
             question=question,
             index_dir=index_dir,
             top_k=top_k,
             api_key=api_key,
-            client=client,
+            client=active_client,
         )
     except Exception as exc:
-        if not is_quota_error(exc):
+        if not _is_structured_provider_quota_error(exc):
             raise
         local_records = retrieve_locally(question, index_dir, top_k)
         return resolve_extractive_result(question, local_records)
 
     source_map = build_source_map(retrieval_records)
     prompt = build_generation_prompt(question, source_map)
-    active_client = client or create_genai_client(api_key=api_key)
     try:
         generated = generate_grounded_answer(
             client=active_client,
@@ -257,7 +329,7 @@ def answer_with_free_fallback(
             retry_delay=retry_delay,
         )
     except Exception as exc:
-        if not is_quota_error(exc):
+        if not _is_structured_provider_quota_error(exc):
             raise
         return resolve_extractive_result(question, retrieval_records)
 
