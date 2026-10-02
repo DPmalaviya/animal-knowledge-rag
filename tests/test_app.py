@@ -33,6 +33,7 @@ def create_synthetic_supported_result(
     question: str = "How does lead ammunition expose bald eagles to lead?",
     answer: str = "Bald eagles scavenge gut piles containing lead ammunition fragments [C1, C2].",
     rendered_answer: str = "Bald eagles scavenge gut piles containing lead ammunition fragments (bald_eagle_lead_exposure.pdf, p. 1).",
+    answer_mode: str = "gemini",
 ) -> Dict[str, Any]:
     return {
         "question": question,
@@ -69,11 +70,13 @@ def create_synthetic_supported_result(
         "citation_group_count": 1,
         "unique_citation_count": 1,
         "is_fallback": False,
+        "answer_mode": answer_mode,
     }
 
 
 def create_synthetic_fallback_result(
     question: str = "What do snow leopards eat in winter?",
+    answer_mode: str = "gemini",
 ) -> Dict[str, Any]:
     return {
         "question": question,
@@ -85,6 +88,7 @@ def create_synthetic_fallback_result(
         "citation_group_count": 0,
         "unique_citation_count": 0,
         "is_fallback": True,
+        "answer_mode": answer_mode,
     }
 
 
@@ -313,6 +317,60 @@ class TestAppStage11(unittest.TestCase):
         self.assertEqual(kwargs["question"], raw_question)
         self.assertEqual(kwargs["top_k"], 4)
         self.assertEqual(at.session_state["submitted_question"], raw_question)
+
+    def test_15_apptest_gemini_result_does_not_show_offline_notice(self) -> None:
+        mock_backend = MagicMock(return_value=create_synthetic_supported_result(answer_mode="gemini"))
+        at = AppTest.from_function(_run_test_app, args=(mock_backend,), default_timeout=5).run()
+        at.text_area[0].input("How does lead affect bald eagles?")
+        at.button[0].click().run()
+
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.info), 0)
+
+    def test_16_apptest_offline_supported_result_shows_notice_answer_and_sources(self) -> None:
+        synth_res = create_synthetic_supported_result(answer_mode="offline_extractive")
+        mock_backend = MagicMock(return_value=synth_res)
+        at = AppTest.from_function(_run_test_app, args=(mock_backend,), default_timeout=5).run()
+        at.text_area[0].input("How does lead affect bald eagles?")
+        at.button[0].click().run()
+
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.info), 1)
+        self.assertEqual(
+            at.info[0].value,
+            "Gemini's free limit is currently reached, so this answer was extracted directly from the indexed sources.",
+        )
+        combined_markdown = "\n".join(m.value for m in at.markdown)
+        self.assertIn(synth_res["rendered_answer"], combined_markdown)
+        self.assertIn("Sources & Grounding", combined_markdown)
+        self.assertIn("Synthetic Bald Eagle Lead Study", combined_markdown)
+
+    def test_17_apptest_offline_insufficient_context_shows_notice_without_sources(self) -> None:
+        synth_res = create_synthetic_fallback_result(answer_mode="offline_extractive")
+        mock_backend = MagicMock(return_value=synth_res)
+        at = AppTest.from_function(_run_test_app, args=(mock_backend,), default_timeout=5).run()
+        at.text_area[0].input("What do snow leopards eat?")
+        at.button[0].click().run()
+
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.info), 1)
+        combined_markdown = "\n".join(m.value for m in at.markdown)
+        self.assertIn(INSUFFICIENT_CONTEXT_FALLBACK, combined_markdown)
+        self.assertNotIn("Sources & Grounding", combined_markdown)
+
+    def test_18_apptest_result_without_answer_mode_remains_supported(self) -> None:
+        synth_res = create_synthetic_supported_result()
+        synth_res.pop("answer_mode")
+        mock_backend = MagicMock(return_value=synth_res)
+        at = AppTest.from_function(_run_test_app, args=(mock_backend,), default_timeout=5).run()
+        at.text_area[0].input("How does lead affect bald eagles?")
+        at.button[0].click().run()
+
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.info), 0)
+        combined_markdown = "\n".join(m.value for m in at.markdown)
+        self.assertIn(synth_res["rendered_answer"], combined_markdown)
+        self.assertIn("Sources & Grounding", combined_markdown)
 
 
 if __name__ == "__main__":

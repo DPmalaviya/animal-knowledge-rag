@@ -11,8 +11,8 @@ from urllib.parse import urlparse
 
 import streamlit as st
 
-from src.citations import answer_with_citations
 from src.generation import INSUFFICIENT_CONTEXT_FALLBACK
+from src.offline_fallback import answer_with_free_fallback
 
 # Default fixed index directory and Top-K context count
 DEFAULT_INDEX_DIR = "index"
@@ -131,11 +131,11 @@ def map_backend_error_to_user_message(exc: Exception) -> str:
     return "Answer could not be generated right now; please try again."
 
 
-def render_app(answer_fn: Callable[..., Dict[str, Any]] = answer_with_citations) -> None:
+def render_app(answer_fn: Callable[..., Dict[str, Any]] = answer_with_free_fallback) -> None:
     """Render the main Streamlit application interface.
 
     Args:
-        answer_fn: Injectable backend function for RAG execution (defaults to production answer_with_citations).
+        answer_fn: Injectable backend function for RAG execution (defaults to the free fallback backend).
     """
     # Check Streamlit Cloud st.secrets for GEMINI_API_KEY if process env is unset
     api_key = None
@@ -247,6 +247,12 @@ def render_app(answer_fn: Callable[..., Dict[str, Any]] = answer_with_citations)
     if latest_res and not st.session_state["error_message"]:
         st.divider()
         st.subheader("Answer")
+
+        if latest_res.get("answer_mode") == "offline_extractive":
+            st.info(
+                "Gemini's free limit is currently reached, so this answer was extracted "
+                "directly from the indexed sources."
+            )
 
         # Trusted answer rendering boundary: render rendered_answer ONLY with unsafe_html=False
         rendered_answer = latest_res.get("rendered_answer", "")
