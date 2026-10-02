@@ -13,6 +13,7 @@ Uses native Streamlit AppTest and dependency injection to test all UI contracts:
 - Offline operation without live API key or FAISS index
 """
 
+import inspect
 import unittest
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock
@@ -26,6 +27,7 @@ from app import (
     render_app,
 )
 from src.generation import INSUFFICIENT_CONTEXT_FALLBACK
+from src.offline_fallback import answer_with_free_fallback
 
 
 # Synthetic fixture helpers matching Stage 10 data contracts
@@ -68,7 +70,7 @@ def create_synthetic_supported_result(
             },
         ],
         "citation_group_count": 1,
-        "unique_citation_count": 1,
+        "unique_citation_count": 2,
         "is_fallback": False,
         "answer_mode": answer_mode,
     }
@@ -199,6 +201,8 @@ class TestAppStage11(unittest.TestCase):
         mock_backend.assert_not_called()
         self.assertTrue(len(at.title) > 0)
         self.assertIn("Animal Knowledge RAG Assistant", at.title[0].value)
+        combined_markdown = "\n".join(m.value for m in at.markdown)
+        self.assertIn("Deterministic offline lexical/extractive quota fallback", combined_markdown)
 
     def test_08_apptest_empty_query_shows_warning_no_backend_call(self) -> None:
         mock_backend = MagicMock()
@@ -371,6 +375,29 @@ class TestAppStage11(unittest.TestCase):
         combined_markdown = "\n".join(m.value for m in at.markdown)
         self.assertIn(synth_res["rendered_answer"], combined_markdown)
         self.assertIn("Sources & Grounding", combined_markdown)
+
+    def test_19_render_app_defaults_to_free_fallback_backend(self) -> None:
+        default_backend = inspect.signature(render_app).parameters["answer_fn"].default
+        self.assertIs(default_backend, answer_with_free_fallback)
+
+    def test_20_apptest_gemini_submission_clears_previous_offline_notice(self) -> None:
+        mock_backend = MagicMock(
+            side_effect=[
+                create_synthetic_supported_result(answer_mode="offline_extractive"),
+                create_synthetic_supported_result(answer_mode="gemini"),
+            ]
+        )
+        at = AppTest.from_function(_run_test_app, args=(mock_backend,), default_timeout=5).run()
+
+        at.text_area[0].input("First offline question?")
+        at.button[0].click().run()
+        self.assertEqual(len(at.info), 1)
+
+        at.text_area[0].input("Second Gemini question?")
+        at.button[0].click().run()
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.info), 0)
+        self.assertEqual(mock_backend.call_count, 2)
 
 
 if __name__ == "__main__":

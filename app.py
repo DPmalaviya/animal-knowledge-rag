@@ -178,6 +178,7 @@ def render_app(answer_fn: Callable[..., Dict[str, Any]] = answer_with_free_fallb
             "- FAISS IndexFlatIP (768-dim)\n"
             "- Gemini 3.8 Flash (Thinking Level: Low)\n"
             "- Fixed Top-K Retrieval: 4 chunks\n"
+            "- Deterministic offline lexical/extractive quota fallback\n"
             "- Deterministic Stage 10 Citation Parsing"
         )
 
