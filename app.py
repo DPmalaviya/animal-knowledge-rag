@@ -251,8 +251,8 @@ def render_app(answer_fn: Callable[..., Dict[str, Any]] = answer_with_free_fallb
 
         if latest_res.get("answer_mode") == "offline_extractive":
             st.info(
-                "Gemini's free limit is currently reached, so this answer was extracted "
-                "directly from the indexed sources."
+                "Gemini is temporarily unavailable due to an API limit, so this answer "
+                "was extracted directly from the indexed sources."
             )
 
         # Trusted answer rendering boundary: render rendered_answer ONLY with unsafe_html=False

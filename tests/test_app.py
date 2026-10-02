@@ -342,7 +342,7 @@ class TestAppStage11(unittest.TestCase):
         self.assertEqual(len(at.info), 1)
         self.assertEqual(
             at.info[0].value,
-            "Gemini's free limit is currently reached, so this answer was extracted directly from the indexed sources.",
+            "Gemini is temporarily unavailable due to an API limit, so this answer was extracted directly from the indexed sources.",
         )
         combined_markdown = "\n".join(m.value for m in at.markdown)
         self.assertIn(synth_res["rendered_answer"], combined_markdown)
