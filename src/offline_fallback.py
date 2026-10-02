@@ -8,6 +8,17 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.citations import resolve_rag_citations
+from src.embeddings import create_genai_client
+from src.generation import (
+    DEFAULT_GENERATION_MODEL,
+    build_generation_prompt,
+    build_source_map,
+    generate_grounded_answer,
+)
+from src.provider_errors import is_quota_error
+from src.retrieval import retrieve
+
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -206,6 +217,60 @@ def resolve_extractive_result(
         return build_offline_fallback_result(question)
     resolved = resolve_rag_citations(rag_result)
     resolved["answer_mode"] = "offline_extractive"
+    return resolved
+
+
+def answer_with_free_fallback(
+    question: str,
+    top_k: int = 4,
+    index_dir: str = "index",
+    api_key: Optional[str] = None,
+    client: Optional[Any] = None,
+    model_name: str = DEFAULT_GENERATION_MODEL,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
+) -> Dict[str, Any]:
+    """Return a Gemini answer, falling back to local extraction only on quota errors."""
+    try:
+        retrieval_records = retrieve(
+            question=question,
+            index_dir=index_dir,
+            top_k=top_k,
+            api_key=api_key,
+            client=client,
+        )
+    except Exception as exc:
+        if not is_quota_error(exc):
+            raise
+        local_records = retrieve_locally(question, index_dir, top_k)
+        return resolve_extractive_result(question, local_records)
+
+    source_map = build_source_map(retrieval_records)
+    prompt = build_generation_prompt(question, source_map)
+    active_client = client or create_genai_client(api_key=api_key)
+    try:
+        generated = generate_grounded_answer(
+            client=active_client,
+            prompt=prompt,
+            model_name=model_name,
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+        )
+    except Exception as exc:
+        if not is_quota_error(exc):
+            raise
+        return resolve_extractive_result(question, retrieval_records)
+
+    rag_result = {
+        "question": question,
+        "answer": generated["answer"],
+        "generation_model": model_name,
+        "source_map": source_map,
+        "retrieved_context_count": len(retrieval_records),
+        "usage_metadata": generated["usage_metadata"],
+    }
+    resolved = resolve_rag_citations(rag_result)
+    resolved["answer_mode"] = "gemini"
     return resolved
 
 

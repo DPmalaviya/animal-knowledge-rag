@@ -7,7 +7,7 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from src.generation import (
     DEFAULT_GENERATION_MODEL,
@@ -15,6 +15,7 @@ from src.generation import (
     build_source_map,
 )
 from src.offline_fallback import (
+    answer_with_free_fallback,
     build_extractive_rag_result,
     build_offline_fallback_result,
     rank_metadata,
@@ -533,6 +534,157 @@ class TestExtractiveAnswer(unittest.TestCase):
         self.assertEqual(final["citations"][0]["page_number"], 7)
         self.assertFalse(final["is_fallback"])
         self.assertEqual(final["answer_mode"], "offline_extractive")
+
+
+class QuotaError(Exception):
+    """Provider-shaped quota failure used to exercise the orchestration boundary."""
+
+    code = 429
+
+
+class TestHybridOrchestration(unittest.TestCase):
+    def setUp(self):
+        self.question = "How do bald eagles ingest lead fragments?"
+        self.semantic_records = [
+            make_record(
+                0,
+                text="Bald eagles ingest lead fragments from ammunition.",
+            )
+        ]
+        self.semantic_records[0].update(rank=1, similarity_score=0.9)
+
+    def test_normal_gemini_result_is_citation_resolved_and_marked_gemini(self):
+        client = MagicMock()
+        original_records = copy.deepcopy(self.semantic_records)
+        with (
+            patch("src.offline_fallback.retrieve", return_value=self.semantic_records) as retrieve,
+            patch("src.offline_fallback.create_genai_client") as create_client,
+            patch(
+                "src.offline_fallback.generate_grounded_answer",
+                return_value={
+                    "answer": "Bald eagles ingest lead fragments from ammunition. [C1]",
+                    "usage_metadata": {"total_token_count": 13},
+                },
+            ) as generate,
+        ):
+            result = answer_with_free_fallback(
+                self.question,
+                top_k=1,
+                index_dir="semantic-index",
+                api_key="test-key",
+                client=client,
+            )
+
+        retrieve.assert_called_once_with(
+            question=self.question,
+            index_dir="semantic-index",
+            top_k=1,
+            api_key="test-key",
+            client=client,
+        )
+        create_client.assert_not_called()
+        generate.assert_called_once()
+        self.assertEqual(result["answer_mode"], "gemini")
+        self.assertNotIn("usage_metadata", result)
+        self.assertEqual(result["citation_ids"], ["C1"])
+        self.assertEqual(self.semantic_records, original_records)
+        self.assertEqual(
+            result["rendered_answer"],
+            "Bald eagles ingest lead fragments from ammunition. (document-0.pdf, p. 1)",
+        )
+
+    def test_generation_quota_reuses_semantic_records_without_local_retrieval(self):
+        client = MagicMock()
+        offline_result = {"answer_mode": "offline_extractive", "is_fallback": False}
+        with (
+            patch("src.offline_fallback.retrieve", return_value=self.semantic_records),
+            patch("src.offline_fallback.create_genai_client", return_value=client),
+            patch(
+                "src.offline_fallback.generate_grounded_answer",
+                side_effect=QuotaError("rate limit"),
+            ) as generate,
+            patch("src.offline_fallback.retrieve_locally") as retrieve_locally,
+            patch(
+                "src.offline_fallback.resolve_extractive_result",
+                return_value=offline_result,
+            ) as resolve_extractive,
+        ):
+            result = answer_with_free_fallback(self.question, top_k=1)
+
+        self.assertIs(result, offline_result)
+        generate.assert_called_once()
+        retrieve_locally.assert_not_called()
+        resolve_extractive.assert_called_once_with(self.question, self.semantic_records)
+
+    def test_retrieval_quota_uses_local_retrieval_without_generation(self):
+        local_records = [
+            dict(self.semantic_records[0], rank=1, similarity_score=1.0)
+        ]
+        offline_result = {"answer_mode": "offline_extractive", "is_fallback": False}
+        with (
+            patch(
+                "src.offline_fallback.retrieve",
+                side_effect=QuotaError("resource exhausted"),
+            ),
+            patch(
+                "src.offline_fallback.retrieve_locally", return_value=local_records
+            ) as retrieve_locally,
+            patch("src.offline_fallback.create_genai_client") as create_client,
+            patch("src.offline_fallback.generate_grounded_answer") as generate,
+            patch(
+                "src.offline_fallback.resolve_extractive_result",
+                return_value=offline_result,
+            ) as resolve_extractive,
+        ):
+            result = answer_with_free_fallback(self.question, top_k=1, index_dir="local-index")
+
+        self.assertIs(result, offline_result)
+        retrieve_locally.assert_called_once_with(self.question, "local-index", 1)
+        resolve_extractive.assert_called_once_with(self.question, local_records)
+        create_client.assert_not_called()
+        generate.assert_not_called()
+
+    def test_retrieval_quota_no_local_support_returns_exact_offline_fallback_without_network(self):
+        expected = build_offline_fallback_result(self.question)
+        with (
+            patch("src.offline_fallback.retrieve", side_effect=QuotaError("quota")),
+            patch("src.offline_fallback.retrieve_locally", return_value=[]) as retrieve_locally,
+            patch("src.offline_fallback.create_genai_client") as create_client,
+            patch("src.offline_fallback.generate_grounded_answer") as generate,
+        ):
+            result = answer_with_free_fallback(self.question, top_k=1, index_dir="local-index")
+
+        self.assertEqual(result, expected)
+        self.assertEqual(result["answer_mode"], "offline_extractive")
+        retrieve_locally.assert_called_once_with(self.question, "local-index", 1)
+        create_client.assert_not_called()
+        generate.assert_not_called()
+
+    def test_non_quota_retrieval_error_propagates_without_local_fallback(self):
+        error = RuntimeError("authentication failed")
+        with (
+            patch("src.offline_fallback.retrieve", side_effect=error),
+            patch("src.offline_fallback.retrieve_locally") as retrieve_locally,
+        ):
+            with self.assertRaises(RuntimeError) as caught:
+                answer_with_free_fallback(self.question, top_k=1)
+
+        self.assertIs(caught.exception, error)
+        retrieve_locally.assert_not_called()
+
+    def test_non_quota_generation_error_propagates_without_local_fallback(self):
+        error = RuntimeError("authentication failed")
+        with (
+            patch("src.offline_fallback.retrieve", return_value=self.semantic_records),
+            patch("src.offline_fallback.create_genai_client", return_value=MagicMock()),
+            patch("src.offline_fallback.generate_grounded_answer", side_effect=error),
+            patch("src.offline_fallback.retrieve_locally") as retrieve_locally,
+        ):
+            with self.assertRaises(RuntimeError) as caught:
+                answer_with_free_fallback(self.question, top_k=1)
+
+        self.assertIs(caught.exception, error)
+        retrieve_locally.assert_not_called()
 
 
 if __name__ == "__main__":
