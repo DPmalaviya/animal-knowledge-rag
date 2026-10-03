@@ -75,15 +75,15 @@ graph TD
     end
 ```
 
-### API-limit fallback and hosting
+### Provider-unavailable fallback and hosting
 
 At diagnosis, the configured `gemini-3.8-flash` free tier reported a daily generation allowance of **20 requests per day**. That is an observed provider limit, not a permanent project guarantee: Google can change quotas by model, project, account, or region, so check the current Google Gemini API limits for your configuration.
 
-The system does not assume every structured 429 proves daily quota exhaustion. It distinguishes the observed daily-quota signal, which is not retried, from other structured 429 rate-limit responses, which reach the fallback only after bounded retries are exhausted. At generation time, the extractive fallback makes no additional Gemini generation request after the failed request and reuses the semantic chunks already retrieved. At retrieval time, a structured 429 switches to deterministic local lexical retrieval and skips Gemini generation entirely.
+Gemini requests use a 20-second SDK HTTP timeout and one SDK attempt, preventing hidden transport retries from holding the web request indefinitely. The hybrid web path also uses zero application retries, so a provider timeout reaches the local fallback after one bounded request window. Structured 429, 502, 503, and 504 responses and typed timeout/connection failures trigger fallback; authentication, invalid-request, local index, and citation-integrity failures still propagate. At generation time, the extractive fallback makes no additional Gemini generation request and reuses the semantic chunks already retrieved. At retrieval time, provider unavailability switches to deterministic local lexical retrieval and skips Gemini generation entirely.
 
 The fallback executes inside the deployed Streamlit Community Cloud app and does not depend on the developer's laptop remaining on. Streamlit Community Cloud's free tier can sleep when inactive, take time to wake, and enforce its own compute, memory, and availability limits.
 
-The UI uses a neutral API-limit notice: *“Gemini is temporarily unavailable due to an API limit, so this answer was extracted directly from the indexed sources.”* Extractive answers select source sentences deterministically; they are generally less fluent and less capable of synthesis than Gemini-generated answers, and may return the exact insufficient-context fallback when local evidence does not conservatively support the question.
+The UI uses a neutral provider-availability notice: *“Gemini is temporarily unavailable, so this answer was extracted directly from the indexed sources.”* Extractive answers select source sentences deterministically; they are generally less fluent and less capable of synthesis than Gemini-generated answers, and may return the exact insufficient-context fallback when local evidence does not conservatively support the question.
 
 ---
 
@@ -171,7 +171,7 @@ To run the web interface locally with the normal Gemini path, set `GEMINI_API_KE
 ```bash
 streamlit run app.py
 ```
-*Note:* `.env.example` is a template only; application code reads `GEMINI_API_KEY` from process environment or Streamlit Cloud `st.secrets`. Once running, daily-quota or retry-exhausted structured 429 failures automatically use the local fallback described above; no separate fallback service or running developer laptop is required.
+*Note:* `.env.example` is a template only; application code reads `GEMINI_API_KEY` from process environment or Streamlit Cloud `st.secrets`. Once running, structured transient provider failures and typed transport failures automatically use the local fallback described above; no separate fallback service or running developer laptop is required.
 
 ---
 

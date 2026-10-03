@@ -12,6 +12,8 @@ from google.genai import types
 from src.embeddings import (
     DEFAULT_DIMENSION,
     DEFAULT_MODEL,
+    DEFAULT_PROVIDER_TIMEOUT_MS,
+    SDK_HTTP_RETRY_ATTEMPTS,
     calculate_l2_norm,
     create_genai_client,
     embed_corpus_chunks,
@@ -71,6 +73,16 @@ class TestEmbeddings(unittest.TestCase):
             with self.assertRaises(ValueError) as ctx:
                 create_genai_client(api_key=None)
             self.assertIn("GEMINI_API_KEY is not set", str(ctx.exception))
+
+    def test_create_genai_client_bounds_sdk_http_wait_and_disables_hidden_retries(self):
+        with patch("src.embeddings.genai.Client") as client_constructor:
+            create_genai_client(api_key=" test-key ")
+
+        options = client_constructor.call_args.kwargs["http_options"]
+        self.assertIsInstance(options, types.HttpOptions)
+        self.assertEqual(options.timeout, DEFAULT_PROVIDER_TIMEOUT_MS)
+        self.assertEqual(options.retry_options.attempts, SDK_HTTP_RETRY_ATTEMPTS)
+        self.assertEqual(SDK_HTTP_RETRY_ATTEMPTS, 1)
 
     def test_05_validate_embedding_vector_success(self):
         validated = validate_embedding_vector(self.valid_vector, expected_dim=768)

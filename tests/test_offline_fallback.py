@@ -544,6 +544,12 @@ class QuotaError(Exception):
     code = 429
 
 
+class ProviderStatusError(Exception):
+    def __init__(self, message, status_code):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 class TestHybridOrchestration(unittest.TestCase):
     def setUp(self):
         self.question = "How do bald eagles ingest lead fragments?"
@@ -583,6 +589,7 @@ class TestHybridOrchestration(unittest.TestCase):
             top_k=1,
             api_key="test-key",
             client=client,
+            max_retries=0,
         )
         create_client.assert_not_called()
         generate.assert_called_once()
@@ -618,6 +625,20 @@ class TestHybridOrchestration(unittest.TestCase):
         retrieve_locally.assert_not_called()
         resolve_extractive.assert_called_once_with(self.question, self.semantic_records)
 
+    def test_generation_timeout_reuses_semantic_records(self):
+        offline_result = {"answer_mode": "offline_extractive", "is_fallback": False}
+        with (
+            patch("src.offline_fallback.retrieve", return_value=self.semantic_records),
+            patch("src.offline_fallback.generate_grounded_answer", side_effect=TimeoutError("slow")),
+            patch("src.offline_fallback.retrieve_locally") as retrieve_locally,
+            patch("src.offline_fallback.resolve_extractive_result", return_value=offline_result) as resolve,
+        ):
+            result = answer_with_free_fallback(self.question, top_k=1, client=MagicMock())
+
+        self.assertIs(result, offline_result)
+        retrieve_locally.assert_not_called()
+        resolve.assert_called_once_with(self.question, self.semantic_records)
+
     def test_retrieval_quota_uses_local_retrieval_without_generation(self):
         local_records = [
             dict(self.semantic_records[0], rank=1, similarity_score=1.0)
@@ -645,6 +666,44 @@ class TestHybridOrchestration(unittest.TestCase):
         resolve_extractive.assert_called_once_with(self.question, local_records)
         create_client.assert_not_called()
         generate.assert_not_called()
+
+    def test_retrieval_503_uses_local_retrieval_without_generation(self):
+        local_records = [dict(self.semantic_records[0], rank=1, similarity_score=1.0)]
+        with (
+            patch("src.offline_fallback.retrieve", side_effect=ProviderStatusError("down", 503)),
+            patch("src.offline_fallback.retrieve_locally", return_value=local_records),
+            patch("src.offline_fallback.generate_grounded_answer") as generate,
+            patch("src.offline_fallback.resolve_extractive_result", return_value={"ok": True}) as resolve,
+        ):
+            result = answer_with_free_fallback(self.question, top_k=1)
+
+        self.assertEqual(result, {"ok": True})
+        generate.assert_not_called()
+        resolve.assert_called_once_with(self.question, local_records)
+
+    def test_retrieval_timeout_uses_local_retrieval_without_generation(self):
+        local_records = [dict(self.semantic_records[0], rank=1, similarity_score=1.0)]
+        with (
+            patch("src.offline_fallback.retrieve", side_effect=TimeoutError("slow")),
+            patch("src.offline_fallback.retrieve_locally", return_value=local_records),
+            patch("src.offline_fallback.generate_grounded_answer") as generate,
+            patch("src.offline_fallback.resolve_extractive_result", return_value={"ok": True}),
+        ):
+            result = answer_with_free_fallback(self.question, top_k=1)
+
+        self.assertEqual(result, {"ok": True})
+        generate.assert_not_called()
+
+    def test_structured_auth_error_propagates(self):
+        error = ProviderStatusError("unauthorized", 401)
+        with (
+            patch("src.offline_fallback.retrieve", side_effect=error),
+            patch("src.offline_fallback.retrieve_locally") as retrieve_locally,
+        ):
+            with self.assertRaises(ProviderStatusError) as caught:
+                answer_with_free_fallback(self.question, top_k=1)
+        self.assertIs(caught.exception, error)
+        retrieve_locally.assert_not_called()
 
     def test_retrieval_quota_no_local_support_returns_exact_offline_fallback_without_network(self):
         expected = build_offline_fallback_result(self.question)
@@ -725,6 +784,37 @@ class TestHybridOrchestration(unittest.TestCase):
         retrieve.assert_called_once()
         self.assertEqual(generate.call_args.kwargs["max_retries"], 7)
         self.assertEqual(generate.call_args.kwargs["retry_delay"], 0.25)
+
+    def test_hybrid_default_disables_application_retries(self):
+        with (
+            patch("src.offline_fallback.retrieve", return_value=self.semantic_records),
+            patch("src.offline_fallback.generate_grounded_answer", return_value={
+                "answer": "Bald eagles ingest lead fragments from ammunition. [C1]",
+                "usage_metadata": None,
+            }) as generate,
+        ):
+            answer_with_free_fallback(self.question, top_k=1, client=MagicMock())
+        self.assertEqual(generate.call_args.kwargs["max_retries"], 0)
+
+    def test_fake_timeout_smoke_returns_offline_without_real_network(self):
+        script = '''
+from unittest.mock import patch
+from src.offline_fallback import answer_with_free_fallback
+records = [{"text": "local"}]
+with patch("src.offline_fallback.retrieve", side_effect=TimeoutError("bounded provider wait")), \\
+     patch("src.offline_fallback.retrieve_locally", return_value=records), \\
+     patch("src.offline_fallback.resolve_extractive_result", return_value={"answer_mode": "offline_extractive"}):
+    result = answer_with_free_fallback("question", top_k=1)
+assert result["answer_mode"] == "offline_extractive"
+'''
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
     def test_lexical_import_does_not_load_hybrid_dependencies(self):

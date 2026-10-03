@@ -23,6 +23,8 @@ except ImportError:
 
 DEFAULT_MODEL = "gemini-embedding-2"
 DEFAULT_DIMENSION = 768
+DEFAULT_PROVIDER_TIMEOUT_MS = 20_000
+SDK_HTTP_RETRY_ATTEMPTS = 1
 
 
 def prepare_document_text(chunk: Dict[str, Any]) -> str:
@@ -76,7 +78,11 @@ def create_genai_client(api_key: Optional[str] = None) -> Any:
             "in your process environment before running live embeddings."
         )
 
-    return genai.Client(api_key=key.strip())
+    http_options = types.HttpOptions(
+        timeout=DEFAULT_PROVIDER_TIMEOUT_MS,
+        retry_options=types.HttpRetryOptions(attempts=SDK_HTTP_RETRY_ATTEMPTS),
+    )
+    return genai.Client(api_key=key.strip(), http_options=http_options)
 
 
 def calculate_l2_norm(vector: List[float]) -> float:

@@ -2,7 +2,11 @@
 
 import unittest
 
-from src.provider_errors import is_daily_quota_error, is_quota_error
+from src.provider_errors import (
+    is_daily_quota_error,
+    is_provider_unavailable_error,
+    is_quota_error,
+)
 
 
 class ProviderError(Exception):
@@ -15,6 +19,37 @@ class ProviderError(Exception):
 
 
 class TestProviderErrors(unittest.TestCase):
+    def test_provider_unavailable_accepts_structured_transient_statuses(self):
+        for status in (429, 502, 503, 504):
+            with self.subTest(status=status):
+                self.assertTrue(
+                    is_provider_unavailable_error(ProviderError("provider failed", code=status))
+                )
+
+    def test_provider_unavailable_accepts_typed_timeout_and_connection_chain(self):
+        for cause in (TimeoutError("slow"), ConnectionError("offline")):
+            with self.subTest(cause=type(cause).__name__):
+                try:
+                    raise cause
+                except (TimeoutError, ConnectionError) as typed_cause:
+                    try:
+                        raise RuntimeError("request wrapper") from typed_cause
+                    except RuntimeError as wrapped:
+                        self.assertTrue(is_provider_unavailable_error(wrapped))
+
+    def test_provider_unavailable_rejects_auth_bad_request_and_local_errors(self):
+        negatives = (
+            ProviderError("bad request", code=400),
+            ProviderError("unauthorized", status_code=401),
+            ProviderError("forbidden", code=403),
+            FileNotFoundError("index missing"),
+            ValueError("local timeout while parsing quota-index"),
+            RuntimeError("quota timeout provider unavailable"),
+        )
+        for error in negatives:
+            with self.subTest(error=repr(error)):
+                self.assertFalse(is_provider_unavailable_error(error))
+
     def test_numeric_code_429_is_quota_but_not_daily(self):
         error = ProviderError("Too many requests", code=429)
 

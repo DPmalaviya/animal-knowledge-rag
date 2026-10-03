@@ -8,6 +8,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.provider_errors import is_provider_unavailable_error
+
 DEFAULT_GENERATION_MODEL = "gemini-3.8-flash"
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -134,29 +136,6 @@ class _LazyGenaiClient:
         if self._client is None:
             self._client = create_genai_client(api_key=self._api_key)
         return getattr(self._client, name)
-
-
-def _is_structured_provider_quota_error(error: BaseException) -> bool:
-    """Return true only for a provider error carrying HTTP status 429.
-
-    The semantic and generation layers preserve the provider exception as an
-    explicit cause when they wrap a daily-quota failure, so inspect that chain
-    without treating arbitrary validation text as quota evidence.
-    """
-    current: Optional[BaseException] = error
-    seen = set()
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        for attribute in ("code", "status_code"):
-            value = getattr(current, attribute, None)
-            if (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and value == 429
-            ):
-                return True
-        current = current.__cause__ or current.__context__
-    return False
 
 
 def tokenize_meaningful(text: str) -> List[str]:
@@ -299,10 +278,10 @@ def answer_with_free_fallback(
     api_key: Optional[str] = None,
     client: Optional[Any] = None,
     model_name: str = DEFAULT_GENERATION_MODEL,
-    max_retries: int = 3,
+    max_retries: int = 0,
     retry_delay: float = 1.0,
 ) -> Dict[str, Any]:
-    """Return a Gemini answer, falling back to local extraction only on quota errors."""
+    """Return a Gemini answer, falling back when the provider is unavailable."""
     active_client = client if client is not None else _LazyGenaiClient(api_key)
     try:
         retrieval_records = retrieve(
@@ -311,9 +290,10 @@ def answer_with_free_fallback(
             top_k=top_k,
             api_key=api_key,
             client=active_client,
+            max_retries=max_retries,
         )
     except Exception as exc:
-        if not _is_structured_provider_quota_error(exc):
+        if not is_provider_unavailable_error(exc):
             raise
         local_records = retrieve_locally(question, index_dir, top_k)
         return resolve_extractive_result(question, local_records)
@@ -329,7 +309,7 @@ def answer_with_free_fallback(
             retry_delay=retry_delay,
         )
     except Exception as exc:
-        if not _is_structured_provider_quota_error(exc):
+        if not is_provider_unavailable_error(exc):
             raise
         return resolve_extractive_result(question, retrieval_records)
 

@@ -251,7 +251,7 @@ def render_app(answer_fn: Callable[..., Dict[str, Any]] = answer_with_free_fallb
 
         if latest_res.get("answer_mode") == "offline_extractive":
             st.info(
-                "Gemini is temporarily unavailable due to an API limit, so this answer "
+                "Gemini is temporarily unavailable, so this answer "
                 "was extracted directly from the indexed sources."
             )
 

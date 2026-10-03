@@ -2,6 +2,11 @@
 
 from typing import Iterator, Optional, Set
 
+try:
+    import httpx
+except ImportError:  # pragma: no cover - google-genai normally installs httpx
+    httpx = None  # type: ignore
+
 
 _KNOWN_DAILY_QUOTA_ID = "generaterequestsperdayperprojectpermodel-freetier"
 _QUOTA_TEXT_MARKERS = (
@@ -52,6 +57,19 @@ def _has_429_status(error: BaseException) -> bool:
     return False
 
 
+def _has_status(error: BaseException, statuses: Set[int]) -> bool:
+    for item in _exception_chain(error):
+        for attribute in ("code", "status_code"):
+            value = getattr(item, attribute, None)
+            if (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and value in statuses
+            ):
+                return True
+    return False
+
+
 def _error_text(error: BaseException) -> str:
     return " ".join(str(item).lower() for item in _exception_chain(error))
 
@@ -70,3 +88,18 @@ def is_daily_quota_error(error: BaseException) -> bool:
     return any(marker in text for marker in _DAILY_TEXT_MARKERS) and any(
         marker in text for marker in _DAILY_CONTEXT_MARKERS
     )
+
+
+def is_provider_unavailable_error(error: BaseException) -> bool:
+    """Return whether a provider failure is safe to handle with local fallback.
+
+    Classification is deliberately structural: transient HTTP status attributes
+    and typed transport exceptions count, while message text alone does not.
+    """
+    if _has_status(error, {429, 502, 503, 504}):
+        return True
+
+    transport_types = (TimeoutError, ConnectionError)
+    if httpx is not None:
+        transport_types += (httpx.TimeoutException, httpx.NetworkError)
+    return any(isinstance(item, transport_types) for item in _exception_chain(error))
